@@ -75,8 +75,13 @@ in `docs/architecture/project-foundation.md`.
   active/archived state, and audit fields.
 - A product has one or more sellable variants. Each variant stores a unique
   SKU, selling price, current stock, low-stock threshold, and active state.
-- Each variant selects one value for every required variant-defining attribute.
-  The selected variant-defining combination must be unique within the product.
+- Each new variant selects one value for every required variant-defining
+  attribute. The selected variant-defining combination must be unique within
+  the product.
+- Adding a required attribute to a product never creates, replaces, or splits
+  existing variants. The manager may bulk-assign one default value; otherwise,
+  variants that existed before the attribute was added may retain a null value.
+  Variants created afterward must select an allowed value.
 - Non-variant attributes may be stored once for the product when configured by
   its category.
 - Edit product details without changing historical order-line snapshots.
@@ -196,3 +201,9 @@ them separate in the model so later modules can support collection workflows.
     variants, archive and restore them, and review every stock movement.
 12. Inventory search and stock-state filters correctly distinguish healthy,
     low-stock, out-of-stock, and archived variants.
+
+## 11. Store-manager user experience acceptance
+
+The store-manager interface follows the product-first acceptance contract in
+`docs/testing/store-manager-product-first-ui-acceptance.md`. Implementations and
+reviews must verify every applicable `SM-UX-*` scenario in that document.
