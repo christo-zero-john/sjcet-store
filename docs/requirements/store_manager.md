@@ -68,6 +68,12 @@ in `docs/architecture/project-foundation.md`.
   The server validates the same resolved configuration.
 - An attribute value belongs to one attribute type and cannot be selected for a
   different type.
+- Attribute types, values, and category configuration cannot be removed while
+  products or variants reference them. The interface disables removal, shows
+  the reference count, and links to affected products.
+- Unreferenced attribute types, values, and category configuration may be
+  deleted after confirmation. They do not use archive, hidden, or
+  unavailable-for-new-products states.
 
 ### 4.3 Products and variants
 

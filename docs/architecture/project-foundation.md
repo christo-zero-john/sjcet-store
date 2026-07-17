@@ -233,8 +233,11 @@ server for the current order status.
 - Money stored as non-negative `bigint` paise with `INR` currency.
 - Human order numbers are separate from primary keys.
 - Historical line descriptions/prices are snapshots.
-- Product, variant, category, and attribute deletion is archival when
-  referenced.
+- Product, variant, and category removal is archival when referenced.
+- Attribute types, attribute values, and category-attribute configuration
+  cannot be removed while products or variants reference them. Unreferenced
+  records may be deleted after confirmation; these records do not use an
+  archive state.
 - Stock changes occur through one database function that locks affected variant
   rows in a stable order and rejects negative stock.
 - Webhook processing is idempotent through a unique provider event ID.

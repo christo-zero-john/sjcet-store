@@ -14,9 +14,9 @@ This reference converts approved store-manager user experience decisions into re
 
 - **Goal**: verify that a store manager can manage products and stock without learning the underlying database model
 - **Audience**: store-manager module developers, reviewers, and browser-test authors
-- **Coverage**: navigation, product grouping, variant inventory, inline category creation, reusable parameters, and reference-safe removal
+- **Coverage**: navigation, product grouping, variant inventory, inline category creation, reusable parameters, reference-safe removal, images, SKUs, and stock operations
 - **Authority**: approved decisions in this document override older screen layouts that expose categories or variants as the starting point
-- **Open questions**: add approved decisions to this document before implementation
+- **Open questions**: none
 
 ## Product-first navigation
 
@@ -238,7 +238,7 @@ These tests verify that images remain organized at the product level while allow
 
 **Given** the manager is adding or editing a product
 
-**Then** the product form provides one primary image position
+**Then** the product form contains one primary image position
 
 **And** the manager can add optional additional product images
 
@@ -254,7 +254,7 @@ These tests verify that images remain organized at the product level while allow
 
 **And** a variant with its own image displays that image in variant-specific inventory and product views
 
-**And** a variant without its own image falls back to the product's primary image
+**And** a variant without its own image falls back to the product’s primary image
 
 ## SKU entry
 
@@ -266,7 +266,7 @@ These tests verify that managers retain control over variant SKUs without having
 
 **Then** the SKU field accepts a manually entered value
 
-**And** the form provides an optional **Generate SKU** action
+**And** the form includes an optional **Generate SKU** action
 
 **When** the manager selects **Generate SKU**
 
@@ -292,7 +292,7 @@ These tests verify that the interface does not expose variant terminology when a
 
 **Then** the application creates the product and one default sellable variant
 
-**And** inventory treats that default variant as the product's stock record
+**And** inventory treats that default variant as the product’s stock record
 
 **And** the manager-facing interface continues to describe it as a product unless variant context is required
 
@@ -360,9 +360,9 @@ These tests verify that managers can set a higher intended stock count while the
 
 **Then** a focused panel shows the current stock count
 
-**And** the panel provides an integer **New stock count** input whose minimum is the current stock count
+**And** the panel contains an integer **New stock count** input whose minimum is the current stock count
 
-**And** the panel provides a stock-count slider synchronized with that input
+**And** the panel contains a stock-count slider synchronized with that input
 
 **And** the slider minimum is the current stock count
 
@@ -435,7 +435,7 @@ Use this checklist before accepting the product-first manager interface:
 - [ ] Parameter and value archive states do not exist
 - [ ] Products support one primary image and optional additional images
 - [ ] Variants can optionally use their own image
-- [ ] Variants without their own image use the product's primary image
+- [ ] Variants without their own image use the product’s primary image
 - [ ] Variant SKUs support manual entry and optional editable generation
 - [ ] Duplicate SKUs are rejected with field-level feedback
 - [ ] Products without options show direct price, SKU, stock, and low-stock fields
