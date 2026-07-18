@@ -1,8 +1,10 @@
 import Link from "next/link";
 
 import { requireStoreOperator } from "../../../features/auth/authorization";
-import { inventoryStatus } from "../../../features/inventory/inventory-status";
-import { formatPaise } from "../../../lib/money/paise";
+import {
+  ProductList,
+  type ProductListItem,
+} from "../../../features/store-manager/product-list";
 
 type ProductRow = {
   id: string;
@@ -91,7 +93,12 @@ export default async function ProductsPage({
       <form className="filter-bar">
         <label>
           <span>Search</span>
-          <input defaultValue={params.q} name="q" placeholder="Product or SKU" />
+          <input
+            autoComplete="off"
+            defaultValue={params.q}
+            name="q"
+            placeholder="Product or SKU…"
+          />
         </label>
         <label>
           <span>Category</span>
@@ -126,47 +133,22 @@ export default async function ProductsPage({
       </form>
 
       <section className="workspace-card product-table-card">
-        {products.length === 0 ? (
-          <div className="table-empty">
-            <h2>No matching products</h2>
-            <p>Change the filters or add a new product.</p>
-          </div>
-        ) : (
-          <div className="product-table">
-            <div className="product-table-header">
-              <span>Product</span>
-              <span>Variant</span>
-              <span>Price</span>
-              <span>Stock</span>
-              <span>Status</span>
-            </div>
-            {products.flatMap((product) =>
-              product.product_variants.map((variant) => {
-                const status = inventoryStatus({
-                  isActive: product.is_active && variant.is_active,
-                  stock: variant.current_stock,
-                  threshold: variant.low_stock_threshold,
-                });
-                return (
-                  <Link
-                    className="product-table-row"
-                    href={`/store-manager/products/${product.id}`}
-                    key={variant.id}
-                  >
-                    <span>
-                      <strong>{product.name}</strong>
-                      <small>{product.product_categories?.name}</small>
-                    </span>
-                    <span>{variant.sku}</span>
-                    <span>{formatPaise(variant.price_paise)}</span>
-                    <span>{variant.current_stock}</span>
-                    <span className={`status-text is-${status}`}>{status}</span>
-                  </Link>
-                );
-              }),
-            )}
-          </div>
-        )}
+        <ProductList
+          products={products.map(
+            (product): ProductListItem => ({
+              id: product.id,
+              name: product.name,
+              categoryName: product.product_categories?.name ?? "Uncategorized",
+              isActive: product.is_active,
+              variants: product.product_variants.map((variant) => ({
+                id: variant.id,
+                currentStock: variant.current_stock,
+                lowStockThreshold: variant.low_stock_threshold,
+                isActive: variant.is_active,
+              })),
+            }),
+          )}
+        />
       </section>
     </div>
   );

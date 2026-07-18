@@ -24,7 +24,25 @@ type VariantRow = {
     is_active: boolean;
     product_categories: { name: string } | null;
   } | null;
+  variant_attribute_values: Array<{
+    attribute_values: {
+      value: string;
+      attribute_types: { name: string } | null;
+    } | null;
+  }>;
 };
+
+function optionSummary(variant: VariantRow): string {
+  const options = variant.variant_attribute_values
+    .map((selection) => {
+      const value = selection.attribute_values;
+      return value
+        ? `${value.attribute_types?.name ?? "Option"}: ${value.value}`
+        : null;
+    })
+    .filter(Boolean);
+  return options.length ? options.join(" · ") : "Standard product";
+}
 
 export default async function InventoryPage({
   searchParams,
@@ -34,7 +52,7 @@ export default async function InventoryPage({
   const { data, error } = await supabase
     .from("product_variants")
     .select(
-      "id,sku,price_paise,current_stock,low_stock_threshold,is_active,products(id,name,is_active,product_categories(name))",
+      "id,sku,price_paise,current_stock,low_stock_threshold,is_active,products(id,name,is_active,product_categories(name)),variant_attribute_values(attribute_values(value,attribute_types(name)))",
     );
   const q = query.q.toLocaleLowerCase();
   const variants = ((data ?? []) as unknown as VariantRow[])
@@ -108,7 +126,12 @@ export default async function InventoryPage({
       <form className="filter-bar">
         <label>
           <span>Search</span>
-          <input defaultValue={query.q} name="q" placeholder="Product or SKU" />
+          <input
+            autoComplete="off"
+            defaultValue={query.q}
+            name="q"
+            placeholder="Product or SKU…"
+          />
         </label>
         <label>
           <span>Stock status</span>
@@ -160,12 +183,15 @@ export default async function InventoryPage({
               return (
                 <Link
                   className="product-table-row"
-                  href={`/store-manager/products/${variant.products?.id}`}
+                  href={`/store-manager/inventory/${variant.id}`}
                   key={variant.id}
                 >
                   <span>
                     <strong>{variant.products?.name}</strong>
-                    <small>{variant.products?.product_categories?.name}</small>
+                    <small>
+                      {variant.products?.product_categories?.name} ·{" "}
+                      {optionSummary(variant)}
+                    </small>
                   </span>
                   <span>{variant.sku}</span>
                   <span>{formatPaise(variant.price_paise)}</span>

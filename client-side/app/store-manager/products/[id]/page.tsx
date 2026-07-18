@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { randomUUID } from "node:crypto";
 
 import { requireStoreOperator } from "../../../../features/auth/authorization";
 import {
@@ -9,8 +10,12 @@ import {
   updateProduct,
   updateProductVariant,
 } from "../../../../features/catalog/product-actions";
-import { adjustVariantStock } from "../../../../features/inventory/actions";
 import { inventoryStatus } from "../../../../features/inventory/inventory-status";
+import { AddStockPanel } from "../../../../features/store-manager/add-stock-panel";
+import { ConfirmSubmitButton } from "../../../../features/store-manager/confirm-submit-button";
+import { GroupedVariantEditor } from "../../../../features/store-manager/grouped-variant-editor";
+import { ProductMediaEditor } from "../../../../features/store-manager/product-media-editor";
+import { StockReductionPanel } from "../../../../features/store-manager/stock-reduction-panel";
 import { VariantForm } from "../../../../features/store-manager/variant-form";
 import { formatPaise } from "../../../../lib/money/paise";
 
@@ -34,6 +39,7 @@ type CategoryAttribute = {
 type Variant = {
   id: string;
   sku: string;
+  barcode: string | null;
   price_paise: number;
   current_stock: number;
   low_stock_threshold: number;
@@ -47,12 +53,17 @@ type ProductRow = {
   id: string;
   category_id: string;
   name: string;
+  brand: string | null;
   description: string | null;
   is_active: boolean;
   product_categories: {
     name: string;
     parent_id: string | null;
   } | null;
+  product_attribute_values: Array<{
+    attribute_type_id: string;
+    attribute_value_id: string;
+  }>;
   product_variants: Variant[];
 };
 type Movement = {
@@ -65,6 +76,18 @@ type Movement = {
   reason: string;
   created_at: string;
 };
+type ProductImage = {
+  id: string;
+  variant_id: string | null;
+  storage_path: string;
+  alt_text: string | null;
+  is_primary: boolean;
+  sort_order: number;
+};
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 export default async function ProductDetailPage({
   params,
@@ -78,7 +101,7 @@ export default async function ProductDetailPage({
       supabase
         .from("products")
         .select(
-          "id,category_id,name,description,is_active,product_categories(name,parent_id),product_variants(id,sku,price_paise,current_stock,low_stock_threshold,is_active,variant_attribute_values(attribute_type_id,attribute_value_id))",
+          "id,category_id,name,brand,description,is_active,product_categories(name,parent_id),product_attribute_values(attribute_type_id,attribute_value_id),product_variants(id,sku,barcode,price_paise,current_stock,low_stock_threshold,is_active,variant_attribute_values(attribute_type_id,attribute_value_id))",
         )
         .eq("id", id)
         .single(),
@@ -91,34 +114,39 @@ export default async function ProductDetailPage({
       supabase
         .from("attribute_types")
         .select("id,name")
-        .eq("is_active", true)
         .order("name"),
       supabase
         .from("attribute_values")
         .select("id,attribute_type_id,value")
-        .eq("is_active", true)
         .order("sort_order")
         .order("value"),
       supabase
         .from("category_attributes")
         .select("category_id,attribute_type_id,is_required,is_variant_axis")
-        .eq("is_active", true)
         .order("sort_order"),
     ]);
 
   if (!productResult.data) notFound();
   const product = productResult.data as unknown as ProductRow;
   const variantIds = product.product_variants.map((variant) => variant.id);
-  const movementResult = variantIds.length
-    ? await supabase
-        .from("stock_movements")
-        .select(
-          "id,variant_id,movement_type,quantity_before,quantity_delta,quantity_after,reason,created_at",
-        )
-        .in("variant_id", variantIds)
-        .order("created_at", { ascending: false })
-        .limit(100)
-    : { data: [] };
+  const [movementResult, imageResult] = await Promise.all([
+    variantIds.length
+      ? supabase
+          .from("stock_movements")
+          .select(
+            "id,variant_id,movement_type,quantity_before,quantity_delta,quantity_after,reason,created_at",
+          )
+          .in("variant_id", variantIds)
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [] }),
+    supabase
+      .from("product_images")
+      .select("id,variant_id,storage_path,alt_text,is_primary,sort_order")
+      .eq("product_id", id)
+      .order("sort_order")
+      .order("created_at"),
+  ]);
 
   const categories = categoriesResult.data ?? [];
   const attributeTypes = (typesResult.data ?? []) as AttributeType[];
@@ -138,9 +166,21 @@ export default async function ProductDetailPage({
   }
   const configuredAttributes = [...resolvedConfig.values()];
   const movements = (movementResult.data ?? []) as Movement[];
+  const images = (imageResult.data ?? []) as ProductImage[];
   const skuByVariant = new Map(
     product.product_variants.map((variant) => [variant.id, variant.sku]),
   );
+  const productSpecifications = product.product_attribute_values
+    .map((selection) => {
+      const type = attributeTypes.find(
+        (item) => item.id === selection.attribute_type_id,
+      );
+      const value = attributeValues.find(
+        (item) => item.id === selection.attribute_value_id,
+      );
+      return type && value ? `${type.name}: ${value.value}` : null;
+    })
+    .filter((value): value is string => Boolean(value));
 
   return (
     <div className="manager-page">
@@ -148,7 +188,13 @@ export default async function ProductDetailPage({
         <div>
           <p className="eyebrow">{product.product_categories?.name}</p>
           <h1>{product.name}</h1>
+          {product.brand ? <p className="product-brand">{product.brand}</p> : null}
           <p>{product.description || "No product description."}</p>
+          {productSpecifications.length ? (
+            <p className="muted">
+              {productSpecifications.join(" · ")}
+            </p>
+          ) : null}
         </div>
         <div className="header-actions">
           <Link className="secondary-button" href="/store-manager/products">
@@ -161,9 +207,16 @@ export default async function ProductDetailPage({
               type="hidden"
               value={product.is_active ? "false" : "true"}
             />
-            <button className="danger-button" type="submit">
+            <ConfirmSubmitButton
+              className="danger-button"
+              message={
+                product.is_active
+                  ? "Archive this product and all of its variants?"
+                  : "Restore this product?"
+              }
+            >
               {product.is_active ? "Archive product" : "Restore product"}
-            </button>
+            </ConfirmSubmitButton>
           </form>
         </div>
       </header>
@@ -174,6 +227,24 @@ export default async function ProductDetailPage({
       {messages.message ? (
         <p className="notice is-success">{messages.message}</p>
       ) : null}
+
+      <ProductMediaEditor
+        images={images.map((image) => ({
+          id: image.id,
+          publicUrl: supabase.storage
+            .from("product-images")
+            .getPublicUrl(image.storage_path).data.publicUrl,
+          altText: image.alt_text,
+          isPrimary: image.is_primary,
+          variantId: image.variant_id,
+          sortOrder: image.sort_order,
+        }))}
+        productId={id}
+        variants={product.product_variants.map((variant) => ({
+          id: variant.id,
+          sku: variant.sku,
+        }))}
+      />
 
       <details className="workspace-card editor-panel">
         <summary>Edit product information</summary>
@@ -193,6 +264,10 @@ export default async function ProductDetailPage({
           <label>
             Product name
             <input defaultValue={product.name} name="name" required />
+          </label>
+          <label>
+            Brand (optional)
+            <input defaultValue={product.brand ?? ""} name="brand" />
           </label>
           <label className="wide-field">
             Description
@@ -223,6 +298,20 @@ export default async function ProductDetailPage({
               value.attribute_value_id,
             ]),
           );
+          const optionLabels = configuredAttributes
+            .map((configuration) => {
+              const type = attributeTypes.find(
+                (item) => item.id === configuration.attribute_type_id,
+              );
+              const value = attributeValues.find(
+                (item) =>
+                  item.id === selectedValues[configuration.attribute_type_id],
+              );
+              return value
+                ? `${type?.name ?? "Option"}: ${value.value}`
+                : null;
+            })
+            .filter(Boolean);
 
           return (
             <article className="workspace-card variant-card" key={variant.id}>
@@ -230,6 +319,14 @@ export default async function ProductDetailPage({
                 <div>
                   <span className={`status-badge is-${status}`}>{status}</span>
                   <h2>{variant.sku}</h2>
+                  {variant.barcode ? (
+                    <p className="muted">Barcode: {variant.barcode}</p>
+                  ) : null}
+                  <p className="muted">
+                    {optionLabels.length
+                      ? optionLabels.join(" · ")
+                      : "Standard product"}
+                  </p>
                   <p>
                     {formatPaise(variant.price_paise)} · {variant.current_stock}{" "}
                     in stock · alert at {variant.low_stock_threshold}
@@ -243,9 +340,16 @@ export default async function ProductDetailPage({
                     type="hidden"
                     value={variant.is_active ? "false" : "true"}
                   />
-                  <button className="text-button" type="submit">
+                  <ConfirmSubmitButton
+                    className="text-button"
+                    message={
+                      variant.is_active
+                        ? `Archive variant ${variant.sku}?`
+                        : `Restore variant ${variant.sku}?`
+                    }
+                  >
                     {variant.is_active ? "Archive" : "Restore"}
-                  </button>
+                  </ConfirmSubmitButton>
                 </form>
               </div>
 
@@ -255,6 +359,7 @@ export default async function ProductDetailPage({
                   action={updateProductVariant}
                   attributeTypes={attributeTypes}
                   attributeValues={attributeValues}
+                  barcode={variant.barcode}
                   configuredAttributes={configuredAttributes}
                   lowStockThreshold={variant.low_stock_threshold}
                   openingStock={false}
@@ -266,34 +371,53 @@ export default async function ProductDetailPage({
                 />
               </details>
 
-              <form action={adjustVariantStock} className="stock-form">
-                <input name="productId" type="hidden" value={id} />
-                <input name="variantId" type="hidden" value={variant.id} />
-                <label>
-                  Stock change
-                  <input
-                    name="quantityDelta"
-                    placeholder="+10 or -2"
-                    required
-                    type="number"
-                  />
-                </label>
-                <label>
-                  Reason
-                  <input
-                    name="reason"
-                    placeholder="Restock, damage, or correction"
-                    required
-                  />
-                </label>
-                <button className="secondary-button" type="submit">
-                  Record adjustment
-                </button>
-              </form>
+              {variant.is_active ? (
+                <div className="stock-actions-grid">
+                  <details className="nested-editor">
+                    <summary>Add stock</summary>
+                    <AddStockPanel
+                      currentStock={variant.current_stock}
+                      idempotencyKey={randomUUID()}
+                      productId={id}
+                      variantId={variant.id}
+                    />
+                  </details>
+                  <details className="nested-editor">
+                    <summary>Record stock reduction</summary>
+                    <StockReductionPanel
+                      currentStock={variant.current_stock}
+                      idempotencyKey={randomUUID()}
+                      productId={id}
+                      variantId={variant.id}
+                    />
+                  </details>
+                </div>
+              ) : null}
             </article>
           );
         })}
       </section>
+
+      {configuredAttributes.length > 0 ? (
+        <GroupedVariantEditor
+          attributeTypes={configuredAttributes
+            .map((configuration) =>
+              attributeTypes.find(
+                (type) => type.id === configuration.attribute_type_id,
+              ),
+            )
+            .filter((type): type is AttributeType => Boolean(type))}
+          attributeValues={attributeValues}
+          productId={id}
+          variants={product.product_variants.map((variant) => ({
+            id: variant.id,
+            sku: variant.sku,
+            price: formatPaise(variant.price_paise),
+            stock: variant.current_stock,
+            state: variant.is_active ? "Active" : "Archived",
+          }))}
+        />
+      ) : null}
 
       {product.is_active ? (
         <details className="workspace-card editor-panel">
@@ -330,7 +454,7 @@ export default async function ProductDetailPage({
             </div>
             {movements.map((movement) => (
               <div className="history-row" key={movement.id}>
-                <span>{new Date(movement.created_at).toLocaleString("en-IN")}</span>
+                <span>{DATE_TIME_FORMAT.format(new Date(movement.created_at))}</span>
                 <span>{skuByVariant.get(movement.variant_id)}</span>
                 <span>{movement.movement_type}</span>
                 <strong>
