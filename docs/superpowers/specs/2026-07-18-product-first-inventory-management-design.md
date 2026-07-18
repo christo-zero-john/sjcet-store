@@ -58,33 +58,40 @@ Catalog visibility does not depend on department, faculty, student, or staff mem
 The initial page emphasizes:
 
 - product name
-- category
+- brand
+- parent category
+- subcategory
 - description
 - primary image
-- price
-- SKU
-- opening stock
-- low-stock alert
+- category-defined product specifications
+- sellable variants
 
-Additional images and variant controls stay out of the initial path. The manager reveals them only when needed.
+Additional images stay out of the initial path. The manager reveals them only when needed.
 
-The category field is a dropdown. Its final action is **Add New Category**. Selecting that action opens a side panel without leaving the product form. The product form keeps every entered value. Saving the category closes the panel and selects the new category.
+The category chooser uses separate **Parent Category** and **Subcategory** dropdowns. Each dropdown ends with an appropriate create action. Selecting **Add Parent Category** or **Add Subcategory** opens a side panel without leaving the product form. The product form keeps every entered value.
+
+When creating a subcategory, the parent chooser includes **Add Parent Category**. The manager can create the missing parent inside the same panel. Saving the parent returns to the unfinished subcategory form and selects the new parent. Saving the subcategory closes the panel and selects both hierarchy levels on the product form.
+
+Selecting a subcategory reveals inherited parent parameters and subcategory parameters. Non-variant parameters appear as shared product specifications. Variant-defining parameters appear in the sellable-variant editor.
 
 Products without options show price, SKU, stock, and low-stock fields directly. Saving creates one product and one default sellable variant in the same transaction.
 
-Selecting a category reveals its configured product options. A single-form product selects those values beside its selling fields. The grouped variant editor remains hidden until the manager chooses to create more than one sellable variant.
+Products with variant-defining options use explicit sellable rows during creation. For example, **Pinpoint Pen** is one product family and Blue, Black, and Red are separate sellable variants. Each row owns its option values, SKU, price, opening stock, low-stock threshold, optional barcode, optional image, and active state. Shared name, brand, description, images, category, subcategory, and specifications remain on the product family.
 
 ## Category and parameter configuration
 
 The inline category panel contains all category-owned configuration:
 
 - category name
-- optional parent category
+- hierarchy level
+- parent category when creating a subcategory
 - description
 - product parameters
 - **Add Parameter**
 
 The category hierarchy supports one root and one optional child level. The database rejects cycles and a third level.
+
+The parent-category chooser contains **Add Parent Category**. Creating a parent preserves the unfinished child-category draft, automatically selects the new parent, and returns the manager to the child form.
 
 **Add Parameter** opens a searchable chooser. The manager can select an existing reusable parameter or create one in place. New parameter configuration includes:
 
@@ -95,6 +102,8 @@ The category hierarchy supports one root and one optional child level. The datab
 - display order
 
 Categories own parameter definitions and allowed values. Products own sellable variants. The schema never hardcodes catalog names such as stationery, uniform, size, or color.
+
+Parent parameters are inherited by child categories. Child categories can add configuration appropriate to their products. The product form renders shared specifications separately from variant-defining options so details are not lost merely because they do not affect SKU or stock.
 
 ## Reference-safe parameter removal
 
@@ -121,6 +130,7 @@ Each variant owns:
 
 - selected option values
 - unique SKU
+- optional barcode
 - price in integer paise
 - current stock
 - low-stock threshold
@@ -334,14 +344,16 @@ Implementation is complete when:
 1. all `SM-UX-001` through `SM-UX-026` scenarios pass;
 2. product entry does not require catalog-model knowledge;
 3. products without options hide variant terminology;
-4. managers explicitly create and relate variants;
-5. inline category creation preserves product input;
-6. referenced parameters and values cannot be removed;
-7. images follow product-gallery and optional variant-image ownership;
-8. SKU generation remains optional and editable;
-9. stock additions cannot reduce stock;
-10. stock reductions use a separate confirmed operation;
-11. every stock movement is attributable and idempotent;
-12. module boundaries remain intact;
-13. database authorization and integrity tests cover allow and deny paths; and
-14. fresh application and schema verification passes.
+4. products with options expose explicit sellable variants during creation;
+5. parent and subcategory choices are separate and can both be created inline;
+6. nested parent creation preserves both product and subcategory input;
+7. parent and child parameters render as either shared specifications or variant options;
+8. referenced parameters and values cannot be removed;
+9. images follow product-gallery and optional variant-image ownership;
+10. SKU generation remains optional and editable;
+11. stock additions cannot reduce stock;
+12. stock reductions use a separate confirmed operation;
+13. every stock movement is attributable and idempotent;
+14. module boundaries remain intact;
+15. database authorization and integrity tests cover allow and deny paths; and
+16. fresh application and schema verification passes.
