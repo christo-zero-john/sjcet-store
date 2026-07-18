@@ -12,7 +12,7 @@ This design defines the product-first store-manager experience and the contracts
 
 ## Document plan
 
-- **Goal**: define an implementable product and inventory workflow that satisfies `SM-UX-001` through `SM-UX-026`
+- **Goal**: define an implementable product and inventory workflow that satisfies every scenario in the product-first UI acceptance contract
 - **Audience**: store-manager developers, database reviewers, user interface reviewers, and test authors
 - **Content**: navigation, product entry, variants, catalog configuration, images, stock operations, module boundaries, errors, and verification
 - **Open questions**: none
@@ -68,11 +68,26 @@ The initial page emphasizes:
 
 Additional images stay out of the initial path. The manager reveals them only when needed.
 
-The category chooser uses separate **Parent Category** and **Subcategory** dropdowns. Each dropdown ends with an appropriate create action. Selecting **Add Parent Category** or **Add Subcategory** opens a side panel without leaving the product form. The product form keeps every entered value.
+The category chooser uses separate **Parent Category** and **Subcategory**
+dropdowns. Each dropdown ends with an appropriate create action and provides an
+**Edit selected category** action when it has a value. Create and edit use the
+same side panel; edit mode opens with the category fields prefilled. Neither
+operation leaves the product form or clears entered product or variant values.
 
 When creating a subcategory, the parent chooser includes **Add Parent Category**. The manager can create the missing parent inside the same panel. Saving the parent returns to the unfinished subcategory form and selects the new parent. Saving the subcategory closes the panel and selects both hierarchy levels on the product form.
 
 Selecting a subcategory reveals inherited parent parameters and subcategory parameters. Non-variant parameters appear as shared product specifications. Variant-defining parameters appear in the sellable-variant editor.
+
+After selecting a category, the product form always shows **Product options**
+and **Add product option**, even when that category has no parameters yet. The
+manager can reuse an existing parameter or create a new variant-defining
+parameter and its allowed values in a side panel. Saving attaches the option to
+the selected category, preserves the product draft, and immediately changes the
+selling section to explicit variant rows. For example, adding Colour with Blue,
+Black, and Red reveals a Colour chooser on each Pinpoint Pen variant row.
+Each attached option is an interactive edit control rather than a display-only
+chip. Selecting it opens the same option panel in edit mode with the reusable
+option, allowed values, and selected-category configuration prefilled.
 
 Products without options show price, SKU, stock, and low-stock fields directly. Saving creates one product and one default sellable variant in the same transaction.
 
@@ -101,13 +116,37 @@ The parent-category chooser contains **Add Parent Category**. Creating a parent 
 - variant-defining state
 - display order
 
-Categories own parameter definitions and allowed values. Products own sellable variants. The schema never hardcodes catalog names such as stationery, uniform, size, or color.
+Anything that can be created inline can also be edited inline through the same
+prefilled form. This includes parent categories, subcategories, reusable
+parameters, allowed values, and the parameter configuration attached to the
+selected category. The manager never has to abandon the current product task
+to correct catalog data.
+
+Reusable parameter names and allowed-value labels are global catalog data.
+Editing Colour or one of its values updates every category that reuses it. The
+edit panel shows **Used by X categories** before saving a global change.
+Required state, variant-defining state, and display order remain properties of
+the category attachment and affect only the category that owns that
+configuration. An inherited attachment opens the owning parent category's
+configuration rather than silently creating a child override.
+
+Categories own their parameter configuration. Parameter definitions and allowed
+values are reusable catalog data. Products own sellable variants. The schema
+never hardcodes catalog names such as stationery, uniform, size, or color.
 
 Parent parameters are inherited by child categories. Child categories can add configuration appropriate to their products. The product form renders shared specifications separately from variant-defining options so details are not lost merely because they do not affect SKU or stock.
 
 ## Reference-safe parameter removal
 
-The interface allows parameter and value removal only when no product or variant references the target.
+The inline option editor includes **Remove from this category**. This detaches
+the category-parameter configuration; it does not delete the reusable parameter
+or remove it from other categories. Detachment is allowed only when no product
+or variant in the category's effective scope references the parameter.
+
+The same edit flow can permanently remove an allowed value only when no product
+or variant references that value. It can permanently remove a reusable
+parameter only when no product or variant references it and no category remains
+attached to it.
 
 When references exist, the interface:
 
@@ -285,6 +324,14 @@ Server Components read product and inventory views. Client Components own local 
 
 Server Actions validate form input and call typed catalog or inventory services. The database remains authoritative for role checks, uniqueness, references, hierarchy depth, option validity, stock locking, and audit records.
 
+Inline catalog saves use transactional database operations. A category edit
+validates uniqueness, hierarchy depth, and cycles before updating. An option
+edit validates the complete submitted value set, rejects removal of referenced
+values or attachments, updates global reusable data and category-owned
+configuration atomically, and writes an audit event. Each successful response
+returns the updated catalog records so the product form can refresh its
+choosers without losing its draft.
+
 Mutations return typed success or failure results. Redirects occur only after a successful save. Validation errors keep the manager on the current task and preserve entered values.
 
 ## Error handling
@@ -295,6 +342,8 @@ The interface maps stable error codes to field or panel feedback:
 |---|---|
 | duplicate SKU | Mark the SKU field and keep the form values |
 | referenced parameter or value | Disable removal and show reference count |
+| referenced category attachment | Disable **Remove from this category**, explain the usage, and link to affected products |
+| global reusable option edit | Show the affected-category count before saving |
 | stale stock count | Refresh the current count and keep the entered reason |
 | invalid stock reduction | Show the available quantity beside the field |
 | invalid image | Show accepted formats and the 5 MB limit |
@@ -341,19 +390,23 @@ Browser verification covers all scenarios in `docs/testing/store-manager-product
 
 Implementation is complete when:
 
-1. all `SM-UX-001` through `SM-UX-026` scenarios pass;
+1. all scenarios in `docs/testing/store-manager-product-first-ui-acceptance.md`
+   pass;
 2. product entry does not require catalog-model knowledge;
 3. products without options hide variant terminology;
 4. products with options expose explicit sellable variants during creation;
 5. parent and subcategory choices are separate and can both be created inline;
 6. nested parent creation preserves both product and subcategory input;
 7. parent and child parameters render as either shared specifications or variant options;
-8. referenced parameters and values cannot be removed;
-9. images follow product-gallery and optional variant-image ownership;
-10. SKU generation remains optional and editable;
-11. stock additions cannot reduce stock;
-12. stock reductions use a separate confirmed operation;
-13. every stock movement is attributable and idempotent;
-14. module boundaries remain intact;
-15. database authorization and integrity tests cover allow and deny paths; and
-16. fresh application and schema verification passes.
+8. inline-created categories, parameters, values, and attachments can be
+   edited through the same product workflow;
+9. reusable parameter edits clearly apply globally;
+10. referenced parameters, values, and category attachments cannot be removed;
+11. images follow product-gallery and optional variant-image ownership;
+12. SKU generation remains optional and editable;
+13. stock additions cannot reduce stock;
+14. stock reductions use a separate confirmed operation;
+15. every stock movement is attributable and idempotent;
+16. module boundaries remain intact;
+17. database authorization and integrity tests cover allow and deny paths; and
+18. fresh application and schema verification passes.

@@ -197,6 +197,65 @@ parent selected
 
 **Then** that variant selects allowed category values and remains owned by the product
 
+### SM-UX-013A: Add a missing option from product entry
+
+**Given** the manager selected a category that has no Colour option
+
+**Then** the product form still shows **Product options** and
+**Add product option**
+
+**When** the manager selects **Add product option**
+
+**Then** a side panel can reuse an existing parameter or create Colour with
+allowed values such as Blue, Black, and Red
+
+**When** the manager saves Colour
+
+**Then** the product draft remains unchanged
+
+**And** Colour is configured on the selected category
+
+**And** the selling section immediately shows explicit variant rows with a
+Colour chooser, separate SKU, price, and stock fields
+
+### SM-UX-013B: Edit inline-created catalog data inline
+
+**Given** the manager has selected a parent category, subcategory, or attached
+product option
+
+**Then** the current product workflow exposes an edit action for the selected
+item
+
+**When** the manager selects the edit action
+
+**Then** the same side panel used for creation opens in edit mode
+
+**And** every existing field is prefilled
+
+**And** the manager can edit category details, reusable option details, allowed
+values, and category-owned option configuration without leaving the product
+form
+
+**And** cancelling or saving preserves unrelated product and variant input
+
+### SM-UX-013C: Warn before a global reusable-option edit
+
+**Given** Colour is reused by multiple categories
+
+**When** the manager opens Colour from any inline edit control
+
+**Then** the panel shows **Used by X categories**
+
+**And** it explains that changes to the reusable name or allowed-value labels
+apply to all of those categories
+
+**When** the manager confirms the edit
+
+**Then** every category using Colour sees the updated global data
+
+**And** required, variant-defining, and display-order settings change only for
+the category configuration being edited
+
 ## Reference-safe parameter removal
 
 These tests verify that managers cannot break existing products by changing category configuration.
@@ -240,6 +299,27 @@ These tests verify that managers cannot break existing products by changing cate
 **Then** the interface does not offer archive, hide, or unavailable-for-new-products states
 
 **And** it offers removal only when no product references the data
+
+### SM-UX-017A: Detach an unused option from one category
+
+**Given** an option is attached to the selected category
+
+**When** no product or variant in that category's effective scope uses the
+option
+
+**Then** its inline edit panel offers **Remove from this category**
+
+**And** confirmation detaches only that category configuration
+
+**And** the reusable option and its values remain available to other categories
+
+**Given** a product or variant in that scope uses the option
+
+**Then** **Remove from this category** is disabled
+
+**And** the panel explains the blocking usage and links to affected products
+
+**And** a direct or stale client detachment request is rejected by the database
 
 ## Product and variant images
 
@@ -447,10 +527,19 @@ Use this checklist before accepting the product-first manager interface:
 - [ ] Grouped variant editing supports individual and bulk changes
 - [ ] Product forms use separate parent-category and subcategory dropdowns
 - [ ] Both category dropdowns expose their matching inline create action
+- [ ] Selected parent and subcategory values expose inline edit actions
 - [ ] Subcategory creation can create a missing parent without losing its draft
 - [ ] Saving a category preserves product input and selects the category
 - [ ] The category panel contains all category configuration
 - [ ] **Add Parameter** supports reuse and inline creation
+- [ ] Product entry always exposes **Add product option** after category selection
+- [ ] Saving an inline option immediately reveals its variant value chooser
+- [ ] Attached option controls open the same panel prefilled for editing
+- [ ] Reusable option edits show the number of affected categories
+- [ ] Global names and values update every category using the reusable option
+- [ ] Category-owned option settings update only their owning configuration
+- [ ] Unused options can be detached from one category without global deletion
+- [ ] Used category attachments cannot be detached
 - [ ] Categories define allowed options but never own variants
 - [ ] Referenced parameters and values cannot be removed
 - [ ] The database rejects attempted removal of referenced data

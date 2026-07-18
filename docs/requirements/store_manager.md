@@ -44,6 +44,9 @@ in `docs/architecture/project-foundation.md`.
 
 - Managers create, rename, move, reorder, and archive categories through the
   store-manager interface.
+- Wherever a category can be created inline, the selected category can also be
+  edited inline through the same prefilled form. The product draft must remain
+  unchanged while either operation is completed.
 - Category names are data, not database enums or hardcoded application lists.
 - The hierarchy supports root categories and one optional subcategory level.
   A subcategory cannot contain another category.
@@ -58,6 +61,11 @@ in `docs/architecture/project-foundation.md`.
   Brand through the interface. These names are examples only and are never
   seeded as fixed schema values.
 - Managers create allowed values for each attribute type.
+- Wherever an attribute type or allowed value can be created inline, it can
+  also be edited inline through the same prefilled form.
+- Attribute types and values are reusable global catalog data. Renaming one or
+  changing its values updates every category using it. Before saving, the
+  interface shows the number of affected categories.
 - A category configuration selects its applicable attributes and declares
   whether each attribute is required, defines a sellable variant, and where it
   appears on the product form.
@@ -71,6 +79,10 @@ in `docs/architecture/project-foundation.md`.
 - Attribute types, values, and category configuration cannot be removed while
   products or variants reference them. The interface disables removal, shows
   the reference count, and links to affected products.
+- Managers may detach an attribute from a category through the inline edit
+  form. Detachment is disabled while any product or variant in the category's
+  effective scope uses that attribute. Detaching does not delete the reusable
+  attribute type or its allowed values from other categories.
 - Unreferenced attribute types, values, and category configuration may be
   deleted after confirmation. They do not use archive, hidden, or
   unavailable-for-new-products states.
@@ -86,6 +98,14 @@ in `docs/architecture/project-foundation.md`.
 - The product entry form selects a parent category and optional subcategory
   separately. It can create either level inline without losing the product
   draft, and creating a subcategory can create its missing parent inline.
+- The product entry form always exposes **Add product option** after a category
+  is selected. A manager can reuse an existing parameter or create a new one,
+  such as Colour with Blue, Black, and Red, without leaving or clearing the
+  product draft. Saving the option configures it on the selected category and
+  immediately reveals explicit sellable-variant rows.
+- Every attached product option is an inline edit control. It opens the same
+  form used to create the option, prefilled with its global name and values and
+  its selected-category configuration.
 - Managers add variants explicitly. The application never generates the
   Cartesian product of option values.
 - Each new variant selects one value for every required variant-defining
