@@ -299,6 +299,30 @@ export async function loadProductOptionInlineEditor(
   }
   const globalUsage = globalUsageResult.data as CatalogOptionUsage;
   const usage = scopedUsageResult.data as CategoryOptionUsage;
+  const valueUsageResults = await Promise.all(
+    (valuesResult.data ?? []).map(async (value) => {
+      const result = await supabase.rpc("get_catalog_option_usage", {
+        target_attribute_type_id: attributeTypeId,
+        target_attribute_value_id: value.id,
+      });
+      return { id: value.id, ...result };
+    }),
+  );
+  const valueUsageError = valueUsageResults.find(
+    (result) => result.error,
+  )?.error;
+  if (valueUsageError) {
+    return {
+      code: mutationCode(valueUsageError.code),
+      error: valueUsageError.message,
+    };
+  }
+  const valueUsage = Object.fromEntries(
+    valueUsageResults.map((result) => [
+      result.id,
+      result.data as CatalogOptionUsage,
+    ]),
+  );
   const editor: CatalogOptionEditorResult = {
     attributeType: typeResult.data as CatalogAttributeType,
     attributeValues: (valuesResult.data ?? []) as CatalogAttributeValue[],
@@ -306,6 +330,7 @@ export async function loadProductOptionInlineEditor(
       configurationResult.data as CategoryAttributeConfiguration,
     categoryCount: globalUsage.category_count,
     usage,
+    valueUsage,
   };
   return { editor, usage };
 }
@@ -375,6 +400,7 @@ export async function updateProductOptionInline(
       categoryAttribute: result.category_attribute,
       categoryCount: result.category_count,
       usage: { product_count: 0, variant_count: 0, product_ids: [] },
+      valueUsage: {},
     },
     attributeTypes: [result.attribute_type],
     attributeValues: result.attribute_values,

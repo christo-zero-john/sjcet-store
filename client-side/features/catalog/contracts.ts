@@ -58,4 +58,5 @@ export type CatalogOptionEditorResult = Readonly<{
   categoryAttribute: CategoryAttributeConfiguration;
   categoryCount: number;
   usage: CategoryOptionUsage;
+  valueUsage: Readonly<Record<string, CatalogOptionUsage>>;
 }>;
