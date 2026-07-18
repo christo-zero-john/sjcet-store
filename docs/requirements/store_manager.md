@@ -77,10 +77,17 @@ in `docs/architecture/project-foundation.md`.
 
 ### 4.3 Products and variants
 
-- A product stores shared family information: category, name, description,
-  active/archived state, and audit fields.
+- A product stores shared family information: category, name, optional brand,
+  description, product specifications, product gallery, active/archived state,
+  and audit fields.
 - A product has one or more sellable variants. Each variant stores a unique
-  SKU, selling price, current stock, low-stock threshold, and active state.
+  SKU, optional globally unique barcode, selling price, current stock,
+  low-stock threshold, optional image, and active state.
+- The product entry form selects a parent category and optional subcategory
+  separately. It can create either level inline without losing the product
+  draft, and creating a subcategory can create its missing parent inline.
+- Managers add variants explicitly. The application never generates the
+  Cartesian product of option values.
 - Each new variant selects one value for every required variant-defining
   attribute. The selected variant-defining combination must be unique within
   the product.
