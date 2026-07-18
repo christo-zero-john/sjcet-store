@@ -33,9 +33,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `docs/supabase/migrations/20260718090000_reference_safe_catalog_options.sql` | Grandfathered required options and reference-safe removal |
-| `docs/supabase/migrations/20260718091000_product_images.sql` | Product image metadata, storage bucket, and storage policies |
-| `docs/supabase/migrations/20260718092000_idempotent_inventory_operations.sql` | Add-stock and stock-reduction functions |
+| `docs/supabase/migrations/20260718090000_product_first_inventory.sql` | Reference-safe catalog options, product media, and idempotent stock operations |
 | `docs/supabase/main_schema.sql` | Canonical current schema for an empty database |
 | `docs/supabase/tests/reference_safe_catalog_options.test.sql` | Catalog option integrity and authorization |
 | `docs/supabase/tests/product_images.test.sql` | Media ownership, uniqueness, and authorization |
@@ -80,7 +78,7 @@
 
 **Files:**
 
-- Create: `docs/supabase/migrations/20260718090000_reference_safe_catalog_options.sql`
+- Create: `docs/supabase/migrations/20260718090000_product_first_inventory.sql`
 - Create: `docs/supabase/tests/reference_safe_catalog_options.test.sql`
 - Modify: `docs/supabase/main_schema.sql`
 - Modify: `client-side/scripts/validate-main-schema.mjs`
@@ -219,7 +217,7 @@ Fix every confirmed finding. Rerun Step 6 and `git diff --check`.
 - [ ] **Step 8: Commit the slice**
 
 ```powershell
-git add docs/supabase/migrations/20260718090000_reference_safe_catalog_options.sql docs/supabase/tests/reference_safe_catalog_options.test.sql docs/supabase/main_schema.sql client-side/scripts/validate-main-schema.mjs
+git add docs/supabase/migrations/20260718090000_product_first_inventory.sql docs/supabase/tests/reference_safe_catalog_options.test.sql docs/supabase/main_schema.sql client-side/scripts/validate-main-schema.mjs
 git commit -m "feat: enforce reference-safe catalog options"
 ```
 
@@ -227,7 +225,7 @@ git commit -m "feat: enforce reference-safe catalog options"
 
 **Files:**
 
-- Create: `docs/supabase/migrations/20260718091000_product_images.sql`
+- Modify: `docs/supabase/migrations/20260718090000_product_first_inventory.sql`
 - Create: `docs/supabase/tests/product_images.test.sql`
 - Modify: `docs/supabase/main_schema.sql`
 
@@ -326,7 +324,7 @@ Review cross-product variant references, anonymous writes, path traversal, dupli
 - [ ] **Step 6: Commit the slice**
 
 ```powershell
-git add docs/supabase/migrations/20260718091000_product_images.sql docs/supabase/tests/product_images.test.sql docs/supabase/main_schema.sql
+git add docs/supabase/migrations/20260718090000_product_first_inventory.sql docs/supabase/tests/product_images.test.sql docs/supabase/main_schema.sql
 git commit -m "feat: add product image storage"
 ```
 
@@ -334,7 +332,7 @@ git commit -m "feat: add product image storage"
 
 **Files:**
 
-- Create: `docs/supabase/migrations/20260718092000_idempotent_inventory_operations.sql`
+- Modify: `docs/supabase/migrations/20260718090000_product_first_inventory.sql`
 - Create: `docs/supabase/tests/idempotent_inventory_operations.test.sql`
 - Modify: `docs/supabase/main_schema.sql`
 
@@ -424,7 +422,7 @@ Run schema validation and the focused database test. Review retry races, cross-u
 - [ ] **Step 6: Commit the slice**
 
 ```powershell
-git add docs/supabase/migrations/20260718092000_idempotent_inventory_operations.sql docs/supabase/tests/idempotent_inventory_operations.test.sql docs/supabase/main_schema.sql
+git add docs/supabase/migrations/20260718090000_product_first_inventory.sql docs/supabase/tests/idempotent_inventory_operations.test.sql docs/supabase/main_schema.sql
 git commit -m "feat: add idempotent inventory operations"
 ```
 
