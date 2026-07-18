@@ -43,6 +43,9 @@ describe("inline product option boundary", () => {
     const upgradeMigration = readdirSync(migrationsDirectory).find((file) =>
       file.endsWith("_inline_product_options.sql"),
     );
+    const editingMigration = readdirSync(migrationsDirectory).find((file) =>
+      file.endsWith("_inline_catalog_editing.sql"),
+    );
 
     expect(appliedMigration).not.toContain(
       "add_product_option_to_category",
@@ -51,5 +54,23 @@ describe("inline product option boundary", () => {
     expect(
       readFileSync(resolve(migrationsDirectory, upgradeMigration!), "utf8"),
     ).toContain("create function public.add_product_option_to_category(");
+    expect(appliedMigration).not.toContain("update_catalog_option_inline");
+    expect(
+      readFileSync(resolve(migrationsDirectory, upgradeMigration!), "utf8"),
+    ).not.toContain("update_catalog_option_inline");
+    expect(editingMigration).toBeDefined();
+    const editingSource = readFileSync(
+      resolve(migrationsDirectory, editingMigration!),
+      "utf8",
+    );
+    expect(editingSource).toContain(
+      "create function public.update_category_inline(",
+    );
+    expect(editingSource).toContain(
+      "create function public.update_catalog_option_inline(",
+    );
+    expect(editingSource).toContain(
+      "create function public.get_category_option_usage(",
+    );
   });
 });

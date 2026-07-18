@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(18);
 
 select col_type_is(
   'public',
@@ -69,6 +69,36 @@ select volatility_is(
   array['uuid', 'uuid'],
   'stable',
   'usage lookup is stable'
+);
+select has_function(
+  'public',
+  'get_category_option_usage',
+  array['uuid', 'uuid'],
+  'category-scoped option usage is available before detachment'
+);
+select has_function(
+  'public',
+  'update_category_inline',
+  array['uuid', 'text', 'uuid', 'text'],
+  'inline category editing has one guarded operation'
+);
+select has_function(
+  'public',
+  'update_catalog_option_inline',
+  array['uuid', 'uuid', 'text', 'jsonb', 'boolean', 'boolean', 'integer'],
+  'global option data and category configuration update atomically'
+);
+select is_definer(
+  'public',
+  'update_category_inline',
+  array['uuid', 'text', 'uuid', 'text'],
+  'category editing uses an authorized database boundary'
+);
+select is_definer(
+  'public',
+  'update_catalog_option_inline',
+  array['uuid', 'uuid', 'text', 'jsonb', 'boolean', 'boolean', 'integer'],
+  'option editing uses an authorized database boundary'
 );
 
 select * from finish();
