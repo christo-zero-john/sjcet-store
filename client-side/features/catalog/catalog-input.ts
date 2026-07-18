@@ -52,3 +52,58 @@ export function parseNonNegativeInteger(value: string, label: string): number {
 
   return parsed;
 }
+
+export type InlineOptionValueInput = Readonly<{
+  id: string | null;
+  value: string;
+  sort_order: number;
+}>;
+
+export function parseInlineOptionValues(
+  input: string,
+): InlineOptionValueInput[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new Error("Option values could not be read.");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Option values could not be read.");
+  }
+  if (parsed.length === 0) {
+    throw new Error("Add at least one option value.");
+  }
+
+  const values = parsed.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("Option values could not be read.");
+    }
+    const candidate = item as Record<string, unknown>;
+    const value =
+      typeof candidate.value === "string" ? candidate.value.trim() : "";
+    const id =
+      typeof candidate.id === "string" && candidate.id
+        ? candidate.id
+        : null;
+    const sortOrder =
+      typeof candidate.sort_order === "number"
+        ? candidate.sort_order
+        : index;
+
+    if (!value) {
+      throw new Error("Every option value needs a label.");
+    }
+    if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+      throw new Error("Every option value needs a valid display order.");
+    }
+    return { id, value, sort_order: sortOrder };
+  });
+
+  const normalized = new Set(values.map((item) => item.value.toLowerCase()));
+  if (normalized.size !== values.length) {
+    throw new Error("Option values must be unique.");
+  }
+  return values;
+}

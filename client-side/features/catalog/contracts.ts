@@ -22,6 +22,7 @@ export type ProductCategory = Readonly<{
   id: string;
   name: string;
   parent_id: string | null;
+  description?: string | null;
 }>;
 
 export type CatalogAttributeType = Readonly<{
@@ -33,6 +34,7 @@ export type CatalogAttributeValue = Readonly<{
   id: string;
   attribute_type_id: string;
   value: string;
+  sort_order?: number;
 }>;
 
 export type CategoryAttributeConfiguration = Readonly<{
@@ -40,5 +42,20 @@ export type CategoryAttributeConfiguration = Readonly<{
   attribute_type_id: string;
   is_required: boolean;
   is_variant_axis: boolean;
+  sort_order?: number;
   required_from?: string | null;
+}>;
+
+export type CategoryOptionUsage = Readonly<{
+  product_count: number;
+  variant_count: number;
+  product_ids: readonly string[];
+}>;
+
+export type CatalogOptionEditorResult = Readonly<{
+  attributeType: CatalogAttributeType;
+  attributeValues: readonly CatalogAttributeValue[];
+  categoryAttribute: CategoryAttributeConfiguration;
+  categoryCount: number;
+  usage: CategoryOptionUsage;
 }>;

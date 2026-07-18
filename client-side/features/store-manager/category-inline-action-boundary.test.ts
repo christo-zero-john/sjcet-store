@@ -18,4 +18,16 @@ describe("inline category Server Action boundary", () => {
     expect(directBindings).toHaveLength(2);
     expect(source).not.toContain("await createCategoryInline");
   });
+
+  it("supports the guarded inline category update action", () => {
+    const actionSource = readFileSync(
+      resolve(process.cwd(), "features/catalog/actions.ts"),
+      "utf8",
+    );
+
+    expect(actionSource).toContain(
+      "export async function updateCategoryInline",
+    );
+    expect(actionSource).toMatch(/rpc\(\s*"update_category_inline"/);
+  });
 });

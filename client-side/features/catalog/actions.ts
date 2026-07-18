@@ -4,10 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireStoreOperator } from "../auth/authorization";
-import { catalogSlug, formText } from "./catalog-input";
+import {
+  catalogSlug,
+  formText,
+  parseInlineOptionValues,
+} from "./catalog-input";
 import type {
   CatalogAttributeType,
   CatalogAttributeValue,
+  CatalogMutationCode,
+  CatalogOptionEditorResult,
+  CatalogOptionUsage,
+  CategoryOptionUsage,
   CategoryAttributeConfiguration,
   ProductCategory,
 } from "./contracts";
@@ -17,6 +25,7 @@ export type InlineCategoryState = Readonly<{
   attributeTypes?: readonly CatalogAttributeType[];
   attributeValues?: readonly CatalogAttributeValue[];
   categoryAttributes?: readonly CategoryAttributeConfiguration[];
+  code?: CatalogMutationCode;
   error?: string;
 }>;
 
@@ -24,8 +33,21 @@ export type InlineProductOptionState = Readonly<{
   attributeTypes?: readonly CatalogAttributeType[];
   attributeValues?: readonly CatalogAttributeValue[];
   categoryAttributes?: readonly CategoryAttributeConfiguration[];
+  editor?: CatalogOptionEditorResult;
+  usage?: CategoryOptionUsage;
+  detachedCategoryId?: string;
+  detachedAttributeTypeId?: string;
+  code?: CatalogMutationCode;
   error?: string;
 }>;
+
+function mutationCode(code?: string): CatalogMutationCode {
+  if (code === "42501") return "UNAUTHORIZED";
+  if (code === "23503") return "REFERENCE_IN_USE";
+  if (code === "23505") return "CONFLICT";
+  if (code === "22023" || code === "23514") return "VALIDATION_ERROR";
+  return "UNEXPECTED";
+}
 
 function catalogError(message: string): never {
   redirect(`/store-manager/categories?error=${encodeURIComponent(message)}`);
@@ -111,6 +133,34 @@ export async function createCategoryInline(
   };
 }
 
+export async function updateCategoryInline(
+  _previousState: InlineCategoryState,
+  formData: FormData,
+): Promise<InlineCategoryState> {
+  const categoryId = formText(formData, "categoryId");
+  const name = formText(formData, "name");
+  if (!categoryId || !name) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: "Category name is required.",
+    };
+  }
+
+  const { supabase } = await requireStoreOperator();
+  const { data, error } = await supabase.rpc("update_category_inline", {
+    target_category_id: categoryId,
+    category_name: name,
+    parent_category_id: formText(formData, "parentId") || null,
+    category_description: formText(formData, "description"),
+  });
+  if (error) {
+    return { code: mutationCode(error.code), error: error.message };
+  }
+  revalidatePath("/store-manager/categories");
+  revalidatePath("/store-manager/products/new");
+  return { category: data as ProductCategory };
+}
+
 export async function addProductOptionInline(
   _previousState: InlineProductOptionState,
   formData: FormData,
@@ -190,6 +240,202 @@ export async function addProductOptionInline(
     categoryAttributes: [
       configurationData as CategoryAttributeConfiguration,
     ],
+  };
+}
+
+export async function loadProductOptionInlineEditor(
+  categoryId: string,
+  attributeTypeId: string,
+): Promise<InlineProductOptionState> {
+  if (!categoryId || !attributeTypeId) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: "Choose a configured product option.",
+    };
+  }
+  const { supabase } = await requireStoreOperator();
+  const [
+    typeResult,
+    valuesResult,
+    configurationResult,
+    scopedUsageResult,
+    globalUsageResult,
+  ] = await Promise.all([
+    supabase
+      .from("attribute_types")
+      .select("id,name")
+      .eq("id", attributeTypeId)
+      .single(),
+    supabase
+      .from("attribute_values")
+      .select("id,attribute_type_id,value,sort_order")
+      .eq("attribute_type_id", attributeTypeId)
+      .order("sort_order"),
+    supabase
+      .from("category_attributes")
+      .select(
+        "category_id,attribute_type_id,is_required,is_variant_axis,sort_order,required_from",
+      )
+      .eq("category_id", categoryId)
+      .eq("attribute_type_id", attributeTypeId)
+      .single(),
+    supabase.rpc("get_category_option_usage", {
+      target_category_id: categoryId,
+      target_attribute_type_id: attributeTypeId,
+    }),
+    supabase.rpc("get_catalog_option_usage", {
+      target_attribute_type_id: attributeTypeId,
+      target_attribute_value_id: null,
+    }),
+  ]);
+  const error =
+    typeResult.error ??
+    valuesResult.error ??
+    configurationResult.error ??
+    scopedUsageResult.error ??
+    globalUsageResult.error;
+  if (error) {
+    return { code: mutationCode(error.code), error: error.message };
+  }
+  const globalUsage = globalUsageResult.data as CatalogOptionUsage;
+  const usage = scopedUsageResult.data as CategoryOptionUsage;
+  const editor: CatalogOptionEditorResult = {
+    attributeType: typeResult.data as CatalogAttributeType,
+    attributeValues: (valuesResult.data ?? []) as CatalogAttributeValue[],
+    categoryAttribute:
+      configurationResult.data as CategoryAttributeConfiguration,
+    categoryCount: globalUsage.category_count,
+    usage,
+  };
+  return { editor, usage };
+}
+
+export async function updateProductOptionInline(
+  _previousState: InlineProductOptionState,
+  formData: FormData,
+): Promise<InlineProductOptionState> {
+  const categoryId = formText(formData, "categoryId");
+  const attributeTypeId = formText(formData, "attributeTypeId");
+  const optionName = formText(formData, "optionName");
+  if (!categoryId || !attributeTypeId || !optionName) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: "Choose an option and enter its name.",
+    };
+  }
+
+  let values;
+  try {
+    values = parseInlineOptionValues(
+      formText(formData, "allowedValuesJson"),
+    );
+  } catch (error) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: error instanceof Error ? error.message : "Invalid option values.",
+    };
+  }
+
+  const sortOrder = Number(formText(formData, "sortOrder") || "0");
+  if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: "Display order must be zero or greater.",
+    };
+  }
+
+  const { supabase } = await requireStoreOperator();
+  const { data, error } = await supabase.rpc(
+    "update_catalog_option_inline",
+    {
+      target_category_id: categoryId,
+      target_attribute_type_id: attributeTypeId,
+      option_name: optionName,
+      allowed_values: values,
+      option_is_required: formData.get("isRequired") === "on",
+      option_is_variant_axis: formData.get("isVariantAxis") === "on",
+      option_sort_order: sortOrder,
+    },
+  );
+  if (error) {
+    return { code: mutationCode(error.code), error: error.message };
+  }
+  const result = data as {
+    attribute_type: CatalogAttributeType;
+    attribute_values: CatalogAttributeValue[];
+    category_attribute: CategoryAttributeConfiguration;
+    category_count: number;
+  };
+  revalidatePath("/store-manager/categories");
+  revalidatePath("/store-manager/products/new");
+  return {
+    editor: {
+      attributeType: result.attribute_type,
+      attributeValues: result.attribute_values,
+      categoryAttribute: result.category_attribute,
+      categoryCount: result.category_count,
+      usage: { product_count: 0, variant_count: 0, product_ids: [] },
+    },
+    attributeTypes: [result.attribute_type],
+    attributeValues: result.attribute_values,
+    categoryAttributes: [result.category_attribute],
+  };
+}
+
+export async function detachProductOptionInline(
+  _previousState: InlineProductOptionState,
+  formData: FormData,
+): Promise<InlineProductOptionState> {
+  const categoryId = formText(formData, "categoryId");
+  const attributeTypeId = formText(formData, "attributeTypeId");
+  if (!categoryId || !attributeTypeId) {
+    return {
+      code: "VALIDATION_ERROR",
+      error: "Choose a configured product option.",
+    };
+  }
+  const { supabase } = await requireStoreOperator();
+  const { data: usageData, error: usageError } = await supabase.rpc(
+    "get_category_option_usage",
+    {
+      target_category_id: categoryId,
+      target_attribute_type_id: attributeTypeId,
+    },
+  );
+  if (usageError) {
+    return {
+      code: mutationCode(usageError.code),
+      error: usageError.message,
+    };
+  }
+  const usage = usageData as CategoryOptionUsage;
+  if (usage.product_count > 0 || usage.variant_count > 0) {
+    return {
+      code: "REFERENCE_IN_USE",
+      error:
+        "Products in this category use this option, so it cannot be removed.",
+      usage,
+    };
+  }
+  const { error } = await supabase.rpc("remove_category_attribute", {
+    target_category_id: categoryId,
+    target_attribute_type_id: attributeTypeId,
+  });
+  if (error) {
+    return {
+      code: mutationCode(error.code),
+      error:
+        error.code === "23503"
+          ? "Products in this category use this option, so it cannot be removed."
+          : error.message,
+      usage,
+    };
+  }
+  revalidatePath("/store-manager/categories");
+  revalidatePath("/store-manager/products/new");
+  return {
+    detachedCategoryId: categoryId,
+    detachedAttributeTypeId: attributeTypeId,
   };
 }
 
