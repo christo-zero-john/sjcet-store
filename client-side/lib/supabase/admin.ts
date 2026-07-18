@@ -7,7 +7,7 @@ export function createSupabaseAdminClient() {
 
   if (!secretKey) {
     throw new Error(
-      "SUPABASE_SECRET_KEY is required to synchronize configured super admins.",
+      "SUPABASE_SECRET_KEY is required for server-side Supabase administration.",
     );
   }
 

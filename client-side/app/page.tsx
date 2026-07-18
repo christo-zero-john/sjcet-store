@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 
-export default function HomePage() {
-  redirect("/auth");
+import { requireRoleDestination } from "../features/auth/authorization";
+
+export default async function HomePage() {
+  const { destination } = await requireRoleDestination();
+  redirect(destination);
 }

@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { hasSupabasePublicConfig } from "../../lib/supabase/config";
 import { isAllowedCollegeEmail } from "./college-email";
+import { getServerAuthorizedRoles } from "./configured-super-admin";
+import { destinationForRoles } from "./role-destination";
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -28,16 +30,25 @@ export async function signIn(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
-  if (error) {
+  if (error || !data.user) {
     authError("The email address or password is incorrect.");
   }
 
-  redirect("/store-manager");
+  let roles;
+  try {
+    roles = await getServerAuthorizedRoles(data.user);
+  } catch {
+    authError(
+      "Role authorization failed. Apply the latest database migration.",
+    );
+  }
+
+  redirect(destinationForRoles(roles));
 }
 
 export async function signUp(formData: FormData) {

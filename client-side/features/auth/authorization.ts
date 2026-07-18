@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import {
   getServerAuthorizedRoles,
   type AuthorizedRole,
 } from "./configured-super-admin";
+import { destinationForRoles } from "./role-destination";
 
 export type AppRole = AuthorizedRole;
 
@@ -12,7 +14,11 @@ export function canManageStore(roles: readonly AppRole[]): boolean {
   return roles.includes("store_manager") || roles.includes("super_admin");
 }
 
-export async function requireStoreOperator() {
+export function canManageUsers(roles: readonly AppRole[]): boolean {
+  return roles.includes("super_admin");
+}
+
+export const requireAuthenticatedUser = cache(async function requireAuthenticatedUser() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -31,9 +37,46 @@ export async function requireStoreOperator() {
     );
   }
 
-  if (!canManageStore(roles)) {
-    redirect("/auth?error=Store%20manager%20access%20is%20required.");
+  return { supabase, user, roles };
+});
+
+export async function requireStoreOperator() {
+  const context = await requireAuthenticatedUser();
+
+  if (!canManageStore(context.roles)) {
+    redirect(
+      "/dashboard?notice=Store%20manager%20access%20is%20required%20for%20that%20workspace.",
+    );
   }
 
-  return { supabase, user, roles };
+  return context;
+}
+
+export async function requireSuperAdmin() {
+  const context = await requireAuthenticatedUser();
+
+  if (!canManageUsers(context.roles)) {
+    redirect(destinationForRoles(context.roles));
+  }
+
+  return context;
+}
+
+export async function requireStudentLanding() {
+  const context = await requireAuthenticatedUser();
+  const destination = destinationForRoles(context.roles);
+
+  if (destination !== "/dashboard") {
+    redirect(destination);
+  }
+
+  return context;
+}
+
+export async function requireRoleDestination() {
+  const context = await requireAuthenticatedUser();
+  return {
+    ...context,
+    destination: destinationForRoles(context.roles),
+  };
 }
