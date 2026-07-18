@@ -11,11 +11,15 @@ const source = readFileSync(
 );
 
 describe("inline category Server Action boundary", () => {
-  it("passes the imported Server Action directly to both action states", () => {
+  it("passes imported Server Actions directly to action state", () => {
     const directBindings =
       source.match(/useActionState\(\s*createCategoryInline/g) ?? [];
 
-    expect(directBindings).toHaveLength(2);
+    expect(directBindings).toHaveLength(1);
+    expect(source).toContain(
+      "editing ? updateCategoryInline : createCategoryInline",
+    );
+    expect(source).toMatch(/useActionState\(\s*mainAction/);
     expect(source).not.toContain("await createCategoryInline");
   });
 

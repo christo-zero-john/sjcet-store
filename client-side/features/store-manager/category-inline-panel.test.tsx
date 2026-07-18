@@ -23,4 +23,36 @@ describe("inline category hierarchy", () => {
     expect(markup).toContain("Subcategory name");
     expect(markup).not.toContain("Grandparent");
   });
+
+  it("reuses the category drawer with prefilled edit fields", () => {
+    const markup = renderToStaticMarkup(
+      <CategoryInlinePanel
+        attributeTypes={[]}
+        categories={[
+          {
+            id: "stationery",
+            name: "Stationery",
+            parent_id: null,
+            description: "College supplies",
+          },
+        ]}
+        category={{
+          id: "stationery",
+          name: "Stationery",
+          parent_id: null,
+          description: "College supplies",
+        }}
+        intent="edit"
+        mode="parent"
+        onClose={() => undefined}
+        onCreated={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Edit parent category");
+    expect(markup).toContain('value="Stationery"');
+    expect(markup).toContain("College supplies");
+    expect(markup).toContain("Save changes");
+    expect(markup).not.toContain("Save and select parent category");
+  });
 });

@@ -10,6 +10,7 @@ import {
 import {
   createCategoryInline,
   type InlineCategoryState,
+  updateCategoryInline,
 } from "../catalog/actions";
 import type {
   CatalogAttributeType,
@@ -32,6 +33,8 @@ type CreatedCategoryState = InlineCategoryState & {
 type CategoryInlinePanelProps = Readonly<{
   categories: readonly ProductCategory[];
   attributeTypes: readonly CatalogAttributeType[];
+  intent?: "create" | "edit";
+  category?: ProductCategory;
   mode: "parent" | "subcategory";
   initialParentId?: string;
   onClose: () => void;
@@ -208,14 +211,18 @@ function ParameterEditor({
 export function CategoryInlinePanel({
   categories,
   attributeTypes,
+  intent = "create",
+  category,
   mode,
   initialParentId = "",
   onClose,
   onCreated,
   onIntermediateCreated,
 }: CategoryInlinePanelProps) {
+  const editing = intent === "edit";
+  const mainAction = editing ? updateCategoryInline : createCategoryInline;
   const [categoryState, categoryAction, categoryPending] = useActionState(
-    createCategoryInline,
+    mainAction,
     INITIAL_STATE,
   );
   const [parameters, setParameters] = useState<ParameterDraft[]>([]);
@@ -223,7 +230,13 @@ export function CategoryInlinePanel({
   const [availableParents, setAvailableParents] = useState(
     categories.filter((category) => !category.parent_id),
   );
-  const [parentId, setParentId] = useState(initialParentId);
+  const [parentId, setParentId] = useState(
+    category?.parent_id ?? initialParentId,
+  );
+  const [name, setName] = useState(category?.name ?? "");
+  const [description, setDescription] = useState(
+    category?.description ?? "",
+  );
   const [creatingParent, setCreatingParent] = useState(false);
   const [parentState, parentAction, parentPending] = useActionState(
     createCategoryInline,
@@ -279,7 +292,8 @@ export function CategoryInlinePanel({
           <div>
             <p className="eyebrow">Stay on this product</p>
             <h2 id="new-category-title">
-              Add new {isSubcategory ? "subcategory" : "parent category"}
+              {editing ? "Edit" : "Add new"}{" "}
+              {isSubcategory ? "subcategory" : "parent category"}
             </h2>
           </div>
           <button
@@ -362,9 +376,18 @@ export function CategoryInlinePanel({
               {categoryState.error}
             </p>
           ) : null}
+          {editing ? (
+            <input name="categoryId" type="hidden" value={category?.id ?? ""} />
+          ) : null}
           <label>
             {isSubcategory ? "Subcategory name" : "Parent category name"}
-            <input autoComplete="off" name="name" required />
+            <input
+              autoComplete="off"
+              name="name"
+              onChange={(event) => setName(event.target.value)}
+              required
+              value={name}
+            />
           </label>
           {isSubcategory ? (
             <label>
@@ -397,18 +420,39 @@ export function CategoryInlinePanel({
           )}
           <label>
             Description (optional)
-            <textarea name="description" rows={3} />
+            <textarea
+              name="description"
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              value={description}
+            />
           </label>
-          <ParameterEditor
-            attributeTypes={attributeTypes}
-            parameters={parameters}
-            setParameters={setParameters}
-          />
-          <input
-            name="parameterConfigurations"
-            type="hidden"
-            value={JSON.stringify(parameterConfigurations(parameters))}
-          />
+          {editing ? (
+            <section className="inline-parameters">
+              <div className="section-heading">
+                <div>
+                  <span>Category configuration</span>
+                  <h3>Product parameters</h3>
+                </div>
+              </div>
+              <p className="field-help">
+                Edit attached parameters from their product option controls.
+              </p>
+            </section>
+          ) : (
+            <>
+              <ParameterEditor
+                attributeTypes={attributeTypes}
+                parameters={parameters}
+                setParameters={setParameters}
+              />
+              <input
+                name="parameterConfigurations"
+                type="hidden"
+                value={JSON.stringify(parameterConfigurations(parameters))}
+              />
+            </>
+          )}
           <div className="form-actions">
             <button className="secondary-button" onClick={onClose} type="button">
               Cancel
@@ -420,9 +464,11 @@ export function CategoryInlinePanel({
             >
               {categoryPending
                 ? "Saving…"
-                : `Save and select ${
-                    isSubcategory ? "subcategory" : "parent category"
-                  }`}
+                : editing
+                  ? "Save changes"
+                  : `Save and select ${
+                      isSubcategory ? "subcategory" : "parent category"
+                    }`}
             </button>
           </div>
         </form>
