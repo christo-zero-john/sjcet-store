@@ -21,6 +21,7 @@ type VariantFormProps = Readonly<{
   variantId?: string;
   submitLabel?: string;
   sku?: string;
+  barcode?: string | null;
   price?: string;
   lowStockThreshold?: number;
   openingStock?: boolean;
@@ -36,6 +37,7 @@ export function VariantForm({
   variantId,
   submitLabel = variantId ? "Save variant" : "Add variant",
   sku = "",
+  barcode = "",
   price = "",
   lowStockThreshold = 0,
   openingStock = true,
@@ -55,12 +57,20 @@ export function VariantForm({
         <input defaultValue={sku} name="sku" required />
       </label>
       <label>
+        Barcode (optional)
+        <input
+          defaultValue={barcode ?? ""}
+          inputMode="numeric"
+          name="barcode"
+        />
+      </label>
+      <label>
         Price (₹)
         <input
           defaultValue={price}
           inputMode="decimal"
           name="price"
-          placeholder="0.00"
+          placeholder="0.00…"
           required
         />
       </label>

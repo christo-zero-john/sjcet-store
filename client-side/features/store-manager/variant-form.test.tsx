@@ -23,6 +23,7 @@ describe("variant form", () => {
     );
 
     expect(markup).toContain("SKU");
+    expect(markup).toContain("Barcode");
     expect(markup).toContain("Price");
     expect(markup).toContain("Opening stock");
     expect(markup).toContain("Low-stock threshold");
