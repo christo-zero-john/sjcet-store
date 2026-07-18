@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canManageStore } from "./authorization";
+import { canManageStore, canManageUsers } from "./authorization";
 
 describe("store authorization", () => {
   it.each(["store_manager", "super_admin"] as const)(
@@ -16,4 +16,10 @@ describe("store authorization", () => {
       expect(canManageStore([...roles])).toBe(false);
     },
   );
+
+  it("restricts user access management to super admins", () => {
+    expect(canManageUsers(["super_admin"])).toBe(true);
+    expect(canManageUsers(["store_manager"])).toBe(false);
+    expect(canManageUsers(["student"])).toBe(false);
+  });
 });
