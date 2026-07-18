@@ -56,6 +56,10 @@ const requiredPatterns = new Map([
     "bulk variant attribute assignment",
     /\bcreate function public\.bulk_assign_variant_attribute\b/i,
   ],
+  [
+    "inline product option creation",
+    /\bcreate function public\.add_product_option_to_category\b/i,
+  ],
   ["products", /\bcreate table public\.products\b/i],
   ["product brand", /\bbrand\s+text\b/i],
   ["product variants", /\bcreate table public\.product_variants\b/i],

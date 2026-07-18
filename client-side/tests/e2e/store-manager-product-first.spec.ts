@@ -42,6 +42,15 @@ test.describe("product-first store manager", () => {
     await expect(
       page.getByRole("button", { name: "Generate SKU" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Product options" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Add product option" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Add product option" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Option name")).toBeVisible();
+    await expect(page.getByLabel("Allowed values")).toBeVisible();
   });
 
   test("creates categories inline without losing the product draft", async ({

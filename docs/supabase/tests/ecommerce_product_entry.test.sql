@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(9);
+select plan(10);
 
 select col_type_is(
   'public',
@@ -42,6 +42,12 @@ select is_definer(
   'create_product_with_variants',
   array['uuid', 'text', 'text', 'text', 'jsonb', 'jsonb'],
   'multi-variant creation uses a guarded database boundary'
+);
+select has_function(
+  'public',
+  'add_product_option_to_category',
+  array['uuid', 'uuid', 'text', 'jsonb'],
+  'product entry can add a reusable variant option to its category'
 );
 select has_table(
   'public',

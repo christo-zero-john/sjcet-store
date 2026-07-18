@@ -4,6 +4,23 @@ import { describe, expect, it } from "vitest";
 import { ProductForm } from "./product-form";
 
 describe("product form", () => {
+  it("lets a manager add a variant option when the category has none", () => {
+    const markup = renderToStaticMarkup(
+      <ProductForm
+        attributeTypes={[]}
+        attributeValues={[]}
+        categories={[{ id: "stationery", name: "Stationery" }]}
+        categoryAttributes={[]}
+      />,
+    );
+
+    expect(markup).toContain("Product options");
+    expect(markup).toContain("Add product option");
+    expect(markup).toContain(
+      "Add Colour, Size, or another option when each value needs its own stock.",
+    );
+  });
+
   it("separates hierarchy, shared specifications, and sellable variants", () => {
     const markup = renderToStaticMarkup(
       <ProductForm

@@ -20,6 +20,13 @@ export type InlineCategoryState = Readonly<{
   error?: string;
 }>;
 
+export type InlineProductOptionState = Readonly<{
+  attributeTypes?: readonly CatalogAttributeType[];
+  attributeValues?: readonly CatalogAttributeValue[];
+  categoryAttributes?: readonly CategoryAttributeConfiguration[];
+  error?: string;
+}>;
+
 function catalogError(message: string): never {
   redirect(`/store-manager/categories?error=${encodeURIComponent(message)}`);
 }
@@ -101,6 +108,88 @@ export async function createCategoryInline(
     attributeTypes: (typeData ?? []) as CatalogAttributeType[],
     attributeValues: (valueData ?? []) as CatalogAttributeValue[],
     categoryAttributes: configurations,
+  };
+}
+
+export async function addProductOptionInline(
+  _previousState: InlineProductOptionState,
+  formData: FormData,
+): Promise<InlineProductOptionState> {
+  const { supabase } = await requireStoreOperator();
+  const categoryId = formText(formData, "categoryId");
+  const existingAttributeTypeId =
+    formText(formData, "existingAttributeTypeId") || null;
+  const parameterName = formText(formData, "parameterName") || null;
+  const allowedValues = formText(formData, "allowedValues")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!categoryId) {
+    return { error: "Choose a category before adding a product option." };
+  }
+  if (!existingAttributeTypeId && !parameterName) {
+    return { error: "Enter an option name, such as Colour." };
+  }
+  if (!existingAttributeTypeId && allowedValues.length === 0) {
+    return { error: "Enter at least one allowed value." };
+  }
+
+  const { data: attributeTypeId, error } = await supabase.rpc(
+    "add_product_option_to_category",
+    {
+      target_category_id: categoryId,
+      target_attribute_type_id: existingAttributeTypeId,
+      new_parameter_name: parameterName,
+      new_allowed_values: allowedValues,
+    },
+  );
+  if (error) {
+    if (error.code === "23505") {
+      return {
+        error:
+          "That option already exists or is already configured for this category.",
+      };
+    }
+    return { error: error.message };
+  }
+
+  const [
+    { data: typeData, error: typeError },
+    { data: valueData, error: valueError },
+    { data: configurationData, error: configurationError },
+  ] = await Promise.all([
+    supabase
+      .from("attribute_types")
+      .select("id,name")
+      .eq("id", attributeTypeId)
+      .single(),
+    supabase
+      .from("attribute_values")
+      .select("id,attribute_type_id,value")
+      .eq("attribute_type_id", attributeTypeId)
+      .order("sort_order"),
+    supabase
+      .from("category_attributes")
+      .select(
+        "category_id,attribute_type_id,is_required,is_variant_axis,required_from",
+      )
+      .eq("category_id", categoryId)
+      .eq("attribute_type_id", attributeTypeId)
+      .single(),
+  ]);
+
+  const readError = typeError ?? valueError ?? configurationError;
+  if (readError) return { error: readError.message };
+
+  revalidatePath("/store-manager/categories");
+  revalidatePath("/store-manager/products/new");
+  return {
+    attributeTypes: [typeData as CatalogAttributeType],
+    attributeValues: (valueData ?? []) as CatalogAttributeValue[],
+    categoryAttributes: [
+      configurationData as CategoryAttributeConfiguration,
+    ],
   };
 }
 

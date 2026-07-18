@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
-import type { InlineCategoryState } from "../catalog/actions";
+import type {
+  InlineCategoryState,
+  InlineProductOptionState,
+} from "../catalog/actions";
 import type {
   CategoryAttributeConfiguration,
   ProductCategory,
 } from "../catalog/contracts";
 import { CategoryInlinePanel } from "./category-inline-panel";
+import { ProductOptionInlinePanel } from "./product-option-inline-panel";
 import { ProductVariantRows } from "./product-variant-rows";
 
 type AttributeType = {
@@ -71,6 +75,7 @@ export function ProductForm({
   const [categoryPanelMode, setCategoryPanelMode] = useState<
     "parent" | "subcategory" | null
   >(null);
+  const [optionPanelOpen, setOptionPanelOpen] = useState(false);
   const [productName, setProductName] = useState("");
 
   const rootCategories = availableCategories.filter(
@@ -164,6 +169,37 @@ export function ProductForm({
       setCategoryPanelMode(null);
     },
     [mergeCreatedCategory],
+  );
+
+  const handleCreatedOption = useCallback(
+    (result: InlineProductOptionState) => {
+      setAvailableAttributeTypes((current) => [
+        ...current,
+        ...(result.attributeTypes ?? []).filter(
+          (type) => !current.some((item) => item.id === type.id),
+        ),
+      ]);
+      setAvailableAttributeValues((current) => [
+        ...current,
+        ...(result.attributeValues ?? []).filter(
+          (value) => !current.some((item) => item.id === value.id),
+        ),
+      ]);
+      setAvailableCategoryAttributes((current) => [
+        ...current,
+        ...(result.categoryAttributes ?? []).filter(
+          (configuration) =>
+            !current.some(
+              (item) =>
+                item.category_id === configuration.category_id &&
+                item.attribute_type_id ===
+                  configuration.attribute_type_id,
+            ),
+        ),
+      ]);
+      setOptionPanelOpen(false);
+    },
+    [],
   );
 
   return (
@@ -303,6 +339,44 @@ export function ProductForm({
           </section>
         ) : null}
 
+        <section className="workspace-card product-options-card">
+          <div className="section-heading">
+            <div>
+              <span>Variants</span>
+              <h2>Product options</h2>
+              <p>
+                Add Colour, Size, or another option when each value needs its
+                own stock.
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!finalCategoryId}
+              onClick={() => setOptionPanelOpen(true)}
+              type="button"
+            >
+              + Add product option
+            </button>
+          </div>
+          {variantAttributes.length > 0 ? (
+            <ul className="product-option-list">
+              {variantAttributes.map((configuration) => (
+                <li key={configuration.attribute_type_id}>
+                  {availableAttributeTypes.find(
+                    (type) =>
+                      type.id === configuration.attribute_type_id,
+                  )?.name ?? "Product option"}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-inline-state">
+              No options yet. Add Colour for pens with separately stocked
+              colours.
+            </p>
+          )}
+        </section>
+
         <ProductVariantRows
           attributeTypes={availableAttributeTypes}
           attributeValues={availableAttributeValues}
@@ -333,6 +407,24 @@ export function ProductForm({
           onClose={() => setCategoryPanelMode(null)}
           onCreated={handleCreatedCategory}
           onIntermediateCreated={handleIntermediateParent}
+        />
+      ) : null}
+      {optionPanelOpen && finalCategoryId ? (
+        <ProductOptionInlinePanel
+          attributeTypes={availableAttributeTypes}
+          categoryId={finalCategoryId}
+          configuredAttributeTypeIds={configuredAttributes.map(
+            (configuration) => configuration.attribute_type_id,
+          )}
+          usableAttributeTypeIds={[
+            ...new Set(
+              availableAttributeValues.map(
+                (value) => value.attribute_type_id,
+              ),
+            ),
+          ]}
+          onClose={() => setOptionPanelOpen(false)}
+          onCreated={handleCreatedOption}
         />
       ) : null}
     </>
