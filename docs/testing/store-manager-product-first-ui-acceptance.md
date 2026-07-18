@@ -128,15 +128,19 @@ These tests verify that category setup supports product entry instead of interru
 
 **Given** the manager is adding or editing a product
 
-**Then** the category field appears as a standard dropdown
+**Then** parent category and subcategory appear as separate standard dropdowns
 
-**And** the final dropdown action is **Add New Category**
+**And** the parent chooser ends with **Create parent category**
+
+**And** the subcategory chooser ends with **Create subcategory**
+
+**And** the hierarchy never exposes a third level
 
 ### SM-UX-010: Preserve product input while creating a category
 
 **Given** the manager has entered product information
 
-**When** the manager selects **Add New Category**
+**When** the manager selects either create action
 
 **Then** a side panel opens without leaving the product form
 
@@ -146,7 +150,7 @@ These tests verify that category setup supports product entry instead of interru
 
 **Then** the panel closes
 
-**And** the product form automatically selects the new category
+**And** the product form automatically selects the new parent or subcategory
 
 ### SM-UX-011: Keep all category configuration in one panel
 
@@ -155,18 +159,25 @@ These tests verify that category setup supports product entry instead of interru
 **Then** the panel contains:
 
 - Category name
-- Optional parent category
+- Parent category when creating a subcategory
 - Description
 - Product parameters
 - **Add Parameter**
 
 **And** the manager does not need to visit another page to finish creating the category
 
+**When** a subcategory needs a parent that does not exist
+
+**Then** **Create parent category** opens inside the same panel
+
+**And** saving it returns to the preserved subcategory draft with the new
+parent selected
+
 ### SM-UX-012: Reuse or create parameters inline
 
 **Given** the manager selects **Add Parameter**
 
-**Then** a searchable chooser lists existing reusable parameters
+**Then** a chooser lists existing reusable parameters
 
 **And** the chooser offers **Create New Parameter**
 
@@ -275,6 +286,16 @@ These tests verify that managers retain control over variant SKUs without having
 **And** the suggested SKU remains editable before the variant is saved
 
 **And** saving is rejected with field-level feedback if the final SKU is already in use
+
+### SM-UX-020A: Keep each variant independently sellable
+
+**Given** a product family such as Pinpoint Pen has Blue, Black, and Red options
+
+**Then** each colour is an explicit sellable variant with its own SKU, optional
+barcode, price, opening stock, low-stock threshold, and optional image
+
+**And** brand, description, category, product specifications, and the main
+gallery remain shared by the product family
 
 ## Products without options
 
@@ -424,8 +445,9 @@ Use this checklist before accepting the product-first manager interface:
 - [ ] Variant details keep sibling variants visible
 - [ ] Managers create variants explicitly
 - [ ] Grouped variant editing supports individual and bulk changes
-- [ ] Product forms use a category dropdown
-- [ ] **Add New Category** opens an inline side panel
+- [ ] Product forms use separate parent-category and subcategory dropdowns
+- [ ] Both category dropdowns expose their matching inline create action
+- [ ] Subcategory creation can create a missing parent without losing its draft
 - [ ] Saving a category preserves product input and selects the category
 - [ ] The category panel contains all category configuration
 - [ ] **Add Parameter** supports reuse and inline creation
@@ -437,6 +459,7 @@ Use this checklist before accepting the product-first manager interface:
 - [ ] Variants can optionally use their own image
 - [ ] Variants without their own image use the product’s primary image
 - [ ] Variant SKUs support manual entry and optional editable generation
+- [ ] Every variant supports an optional unique barcode
 - [ ] Duplicate SKUs are rejected with field-level feedback
 - [ ] Products without options show direct price, SKU, stock, and low-stock fields
 - [ ] Saving a product without options creates one default sellable variant
