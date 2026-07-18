@@ -39,6 +39,12 @@ Suggested ownership boundaries:
 - A module owns its route group, feature directory, tests, and requirement file.
 - Shared feature changes need a foundation review.
 - Do not duplicate shared auth, money, payment, audit, or Supabase clients.
+- Do not bypass the shared role-destination resolver. Super admins, store
+  managers, and other authenticated users must retain their documented landing
+  routes.
+- Store-manager provisioning belongs to the super-admin feature and its
+  service-only/database-authorized boundary; modules must not assign trusted
+  roles directly.
 - Do not change another module's contract without updating its requirement and
   notifying its owner in the pull request.
 - Database migrations are append-only after merge.

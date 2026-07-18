@@ -132,12 +132,24 @@ used only at narrow, audited boundaries such as verified webhook processing.
 
 Initial super administrators are configured with the server-only,
 comma-separated `INITIAL_SUPER_ADMIN_EMAILS` environment value. When a listed,
-email-confirmed account enters a protected manager route, the server uses
+email-confirmed account enters a protected route, the server uses
 `SUPABASE_SECRET_KEY` to call one service-only authorization function. That
 function idempotently assigns `super_admin` when configured, writes an audit
 event, and returns the authoritative role array in the same transaction.
 Neither environment value is exposed to the browser. Removing an address from
 the list does not implicitly revoke a previously assigned role.
+
+Role-aware destinations are authoritative after every login and confirmation:
+
+- `super_admin` -> `/super-admin`;
+- `store_manager` -> `/store-manager/products`; and
+- every other authenticated role -> `/dashboard`.
+
+Super admins manage store-manager access through the dedicated dashboard.
+Existing Auth users receive the role immediately; unknown users receive a
+tracked invitation and are assigned after confirmation. Privileged Auth calls
+remain in server-only actions, while the database authorizes and audits every
+role transition.
 
 ## 6. Shared data ownership
 
