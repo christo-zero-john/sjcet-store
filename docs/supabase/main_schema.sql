@@ -55,6 +55,12 @@ create type public.stock_movement_type as enum (
   'return'
 );
 
+create type public.stock_reservation_status as enum (
+  'active',
+  'released',
+  'consumed'
+);
+
 create table public.product_categories (
   id uuid primary key default gen_random_uuid(),
   parent_id uuid references public.product_categories (id) on delete restrict,
@@ -305,12 +311,18 @@ create table public.orders (
   currency text not null default 'INR',
   subtotal_paise bigint not null,
   total_paise bigint not null,
+  idempotency_key uuid,
+  request_fingerprint text,
+  expires_at timestamptz,
   paid_at timestamptz,
   fulfilled_at timestamptz,
   cancelled_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint orders_currency_inr check (currency = 'INR'),
+  constraint orders_request_fingerprint_present check (
+    idempotency_key is null or request_fingerprint is not null
+  ),
   constraint orders_subtotal_nonnegative check (subtotal_paise >= 0),
   constraint orders_total_nonnegative check (total_paise >= 0),
   constraint orders_total_matches_subtotal
@@ -379,6 +391,26 @@ create table public.stock_movements (
   )
 );
 
+create table public.stock_reservations (
+  order_id uuid not null references public.orders (id) on delete restrict,
+  variant_id uuid not null
+    references public.product_variants (id) on delete restrict,
+  quantity integer not null,
+  status public.stock_reservation_status not null default 'active',
+  expires_at timestamptz not null,
+  released_at timestamptz,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (order_id, variant_id),
+  constraint stock_reservations_quantity_positive check (quantity > 0),
+  constraint stock_reservations_status_timestamps check (
+    (status = 'active' and released_at is null and consumed_at is null)
+    or (status = 'released' and released_at is not null and consumed_at is null)
+    or (status = 'consumed' and consumed_at is not null and released_at is null)
+  )
+);
+
 create table public.payment_attempts (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders (id) on delete restrict,
@@ -392,12 +424,20 @@ create table public.payment_attempts (
   currency text not null default 'INR',
   cash_received_paise bigint,
   change_due_paise bigint,
+  idempotency_key uuid,
+  request_fingerprint text,
+  provider_checkout_expires_at timestamptz,
+  reconciliation_code text,
+  reconciliation_message text,
   failure_code text,
   failure_message text,
   succeeded_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint payment_attempts_amount_nonnegative check (amount_paise >= 0),
+  constraint payment_attempts_reconciliation_code_not_blank check (
+    reconciliation_code is null or btrim(reconciliation_code) <> ''
+  ),
   constraint payment_attempts_currency_inr check (currency = 'INR'),
   constraint payment_attempts_cash_fields check (
     (
@@ -437,6 +477,25 @@ create table private.processed_webhooks (
     check (btrim(event_type) <> ''),
   constraint processed_webhooks_hash_format
     check (payload_sha256 ~ '^[a-f0-9]{64}$')
+);
+
+create table private.payment_handoffs (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null unique
+    references public.orders (id) on delete restrict,
+  token_sha256 text not null unique,
+  claimed_by uuid references auth.users (id) on delete set null,
+  claimed_at timestamptz,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint payment_handoffs_hash_format
+    check (token_sha256 ~ '^[a-f0-9]{64}$'),
+  constraint payment_handoffs_claim_consistent check (
+    (claimed_by is null and claimed_at is null)
+    or (claimed_by is not null and claimed_at is not null)
+  )
 );
 
 create index user_roles_role_user_idx
@@ -531,6 +590,44 @@ create unique index payment_attempts_provider_checkout_unique
 create unique index payment_attempts_provider_payment_unique
   on public.payment_attempts (provider, provider_payment_id)
   where provider_payment_id is not null;
+
+create unique index orders_created_by_idempotency_unique
+  on public.orders (created_by, idempotency_key)
+  where idempotency_key is not null;
+
+create index orders_history_idx
+  on public.orders (created_at desc, id desc);
+
+create index orders_payment_method_status_idx
+  on public.orders (payment_method, status);
+
+create index orders_expires_at_idx
+  on public.orders (expires_at)
+  where expires_at is not null;
+
+create unique index payment_attempts_order_idempotency_unique
+  on public.payment_attempts (order_id, idempotency_key)
+  where idempotency_key is not null;
+
+create index payment_attempts_history_idx
+  on public.payment_attempts (created_at desc, id desc);
+
+create index payment_attempts_status_provider_idx
+  on public.payment_attempts (status, provider);
+
+create index payment_attempts_reconciliation_idx
+  on public.payment_attempts (reconciliation_code)
+  where reconciliation_code is not null;
+
+create index stock_reservations_active_variant_idx
+  on public.stock_reservations (variant_id, expires_at)
+  where status = 'active';
+
+create index stock_reservations_variant_idx
+  on public.stock_reservations (variant_id);
+
+create index payment_handoffs_expires_at_idx
+  on private.payment_handoffs (expires_at);
 
 create function private.set_updated_at()
 returns trigger
@@ -4207,6 +4304,16 @@ before update on public.payment_attempts
 for each row
 execute function private.set_updated_at();
 
+create trigger stock_reservations_set_updated_at
+before update on public.stock_reservations
+for each row
+execute function private.set_updated_at();
+
+create trigger payment_handoffs_set_updated_at
+before update on private.payment_handoffs
+for each row
+execute function private.set_updated_at();
+
 create trigger store_manager_invitations_set_updated_at
 before update on private.store_manager_invitations
 for each row
@@ -4248,6 +4355,9 @@ alter table private.store_manager_invitations force row level security;
 
 alter table private.processed_webhooks enable row level security;
 alter table private.processed_webhooks force row level security;
+
+alter table private.payment_handoffs enable row level security;
+alter table private.payment_handoffs force row level security;
 
 alter table public.product_categories enable row level security;
 alter table public.product_categories force row level security;
@@ -4293,6 +4403,9 @@ alter table public.stock_movements force row level security;
 
 alter table public.payment_attempts enable row level security;
 alter table public.payment_attempts force row level security;
+
+alter table public.stock_reservations enable row level security;
+alter table public.stock_reservations force row level security;
 
 create policy audit_events_select
 on public.audit_events
@@ -4501,22 +4614,20 @@ for select
 to authenticated
 using ((select private.is_store_operator()));
 
+create policy stock_reservations_select
+on public.stock_reservations
+for select
+to authenticated
+using ((select private.is_store_operator()));
+
+-- Authenticated claimants read payment status only through purpose-built
+-- handoff functions, never by querying stored checkout URLs or reconciliation
+-- internals directly. Direct reads are therefore store-operator-only.
 create policy payment_attempts_select
 on public.payment_attempts
 for select
 to authenticated
-using (
-  exists (
-    select 1
-    from public.orders
-    where orders.id = payment_attempts.order_id
-      and (
-        orders.created_by = (select auth.uid())
-        or orders.student_id = (select auth.uid())
-        or (select private.is_store_operator())
-      )
-  )
-);
+using ((select private.is_store_operator()));
 
 insert into storage.buckets (
   id,
@@ -4604,6 +4715,7 @@ revoke all on public.variant_attribute_values from public, anon, authenticated;
 revoke all on public.orders from public, anon, authenticated;
 revoke all on public.order_lines from public, anon, authenticated;
 revoke all on public.stock_movements from public, anon, authenticated;
+revoke all on public.stock_reservations from public, anon, authenticated;
 revoke all on public.payment_attempts from public, anon, authenticated;
 
 grant select on public.audit_events to authenticated;
@@ -4688,6 +4800,7 @@ grant select, insert, update, delete
 grant select on public.orders to authenticated;
 grant select on public.order_lines to authenticated;
 grant select on public.stock_movements to authenticated;
+grant select on public.stock_reservations to authenticated;
 grant select on public.payment_attempts to authenticated;
 
 grant execute on function private.has_role(public.app_role)

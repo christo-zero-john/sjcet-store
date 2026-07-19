@@ -114,6 +114,12 @@ const requiredPatterns = new Map([
   ["variant archival contract", /\bcreate function public\.set_variant_active\b/i],
   ["payment attempts", /\bcreate table public\.payment_attempts\b/i],
   ["webhook ledger", /\bcreate table private\.processed_webhooks\b/i],
+  [
+    "stock reservation status",
+    /\bcreate type public\.stock_reservation_status\b/i,
+  ],
+  ["stock reservations", /\bcreate table public\.stock_reservations\b/i],
+  ["payment handoffs", /\bcreate table private\.payment_handoffs\b/i],
   ["college signup hook", /\bcreate function private\.hook_restrict_college_signup\b/i],
   ["row-level security", /\benable row level security\s*;/i],
 ]);
