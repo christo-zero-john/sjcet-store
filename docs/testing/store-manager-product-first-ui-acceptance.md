@@ -213,10 +213,27 @@ allowed values such as Blue, Black, and Red
 
 **Then** the product draft remains unchanged
 
-**And** Colour is configured on the selected category
+**And** Colour is selected only for the current product draft
 
 **And** the selling section immediately shows explicit variant rows with a
 Colour chooser, separate SKU, price, and stock fields
+
+### SM-UX-013AA: Do not auto-select category suggestions
+
+**Given** the selected category suggests Colour and Size
+
+**When** the manager starts a new product
+
+**Then** the selected product-option list is empty
+
+**And** **Add product option** lists Colour and Size as reusable choices
+
+**When** the manager selects Colour
+
+**Then** only Colour is added to the product draft
+
+**And** **Remove from product** removes Colour without deleting the reusable
+Colour definition or clearing unrelated draft fields
 
 ### SM-UX-013B: Edit inline-created catalog data inline
 

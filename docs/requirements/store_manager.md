@@ -72,8 +72,10 @@ in `docs/architecture/project-foundation.md`.
 - A subcategory inherits its parent category attributes. It may add attributes
   or override the inherited `required`, `variant-defining`, and display-order
   settings without changing the parent.
-- The product form loads its fields from the selected category configuration.
-  The server validates the same resolved configuration.
+- Category configuration supplies ordered suggestions and default settings to
+  the product form. Selecting a category never selects an option for a product.
+- A product explicitly owns its selected options. The product form and server
+  validate only those product-owned options, not every category suggestion.
 - An attribute value belongs to one attribute type and cannot be selected for a
   different type.
 - Attribute types, values, and category configuration cannot be removed while
@@ -101,11 +103,13 @@ in `docs/architecture/project-foundation.md`.
 - The product entry form always exposes **Add product option** after a category
   is selected. A manager can reuse an existing parameter or create a new one,
   such as Colour with Blue, Black, and Red, without leaving or clearing the
-  product draft. Saving the option configures it on the selected category and
-  immediately reveals explicit sellable-variant rows.
-- Every attached product option is an inline edit control. It opens the same
-  form used to create the option, prefilled with its global name and values and
-  its selected-category configuration.
+  product draft. Selecting or creating the option adds it only to the current
+  product draft; it does not silently attach every category option.
+- Category suggestions appear before other reusable options in the chooser,
+  but remain unselected until the manager chooses one.
+- Every selected product option exposes **Edit** and **Remove from product**.
+  Removing it from a draft removes only that option's product/variant values
+  and preserves unrelated product, SKU, price, and stock input.
 - Managers add variants explicitly. The application never generates the
   Cartesian product of option values.
 - Each new variant selects one value for every required variant-defining
