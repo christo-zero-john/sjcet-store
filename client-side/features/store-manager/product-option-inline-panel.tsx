@@ -25,6 +25,7 @@ type OptionValueDraft = {
 
 type ProductOptionInlinePanelProps = Readonly<{
   intent?: "create" | "edit";
+  context?: "category" | "product";
   categoryId: string;
   attributeType?: CatalogAttributeType;
   attributeValues?: readonly CatalogAttributeValue[];
@@ -34,7 +35,6 @@ type ProductOptionInlinePanelProps = Readonly<{
   valueUsage?: Readonly<Record<string, CatalogOptionUsage>>;
   attributeTypes: readonly CatalogAttributeType[];
   configuredAttributeTypeIds: readonly string[];
-  usableAttributeTypeIds: readonly string[];
   onClose: () => void;
   onCreated: (state: InlineProductOptionState) => void;
   onDetached?: (state: InlineProductOptionState) => void;
@@ -52,6 +52,7 @@ function countLabel(
 
 export function ProductOptionInlinePanel({
   intent = "create",
+  context = "category",
   categoryId,
   attributeType,
   attributeValues = [],
@@ -61,12 +62,13 @@ export function ProductOptionInlinePanel({
   valueUsage = {},
   attributeTypes,
   configuredAttributeTypeIds,
-  usableAttributeTypeIds,
   onClose,
   onCreated,
   onDetached,
 }: ProductOptionInlinePanelProps) {
   const editing = intent === "edit";
+  const editingCategory = editing && context === "category";
+  const editingProduct = editing && context === "product";
   const [createState, createAction, createPending] = useActionState(
     addProductOptionInline,
     INITIAL_STATE,
@@ -80,6 +82,7 @@ export function ProductOptionInlinePanel({
     INITIAL_STATE,
   );
   const [existingAttributeTypeId, setExistingAttributeTypeId] = useState("");
+  const [creatingNew, setCreatingNew] = useState(context === "category");
   const [optionName, setOptionName] = useState(attributeType?.name ?? "");
   const [isRequired, setIsRequired] = useState(
     categoryAttribute?.is_required ?? true,
@@ -97,23 +100,24 @@ export function ProductOptionInlinePanel({
       value: value.value,
     })),
   );
-  const state = editing ? updateState : createState;
-  const pending = editing ? updatePending : createPending;
-  const action = editing ? updateAction : createAction;
+  const state = editingCategory ? updateState : createState;
+  const pending = editingCategory ? updatePending : createPending;
+  const action = editingCategory ? updateAction : createAction;
   const availableTypes = useMemo(() => {
     const configured = new Set(configuredAttributeTypeIds);
-    const usable = new Set(usableAttributeTypeIds);
     return attributeTypes.filter(
-      (type) => usable.has(type.id) && !configured.has(type.id),
+      (type) => !configured.has(type.id),
     );
-  }, [
-    attributeTypes,
-    configuredAttributeTypeIds,
-    usableAttributeTypeIds,
-  ]);
+  }, [attributeTypes, configuredAttributeTypeIds]);
 
   useEffect(() => {
-    if (state.categoryAttributes?.length || state.editor) onCreated(state);
+    if (
+      state.categoryAttributes?.length ||
+      state.productOption ||
+      state.editor
+    ) {
+      onCreated(state);
+    }
   }, [onCreated, state]);
 
   useEffect(() => {
@@ -128,7 +132,6 @@ export function ProductOptionInlinePanel({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
-  const creatingNew = !existingAttributeTypeId;
   const referenced = usage.product_count > 0 || usage.variant_count > 0;
 
   return (
@@ -147,7 +150,11 @@ export function ProductOptionInlinePanel({
       <div className="side-panel-content">
         <header>
           <div>
-            <p className="eyebrow">Category configuration</p>
+            <p className="eyebrow">
+              {context === "product"
+                ? "Product configuration"
+                : "Category configuration"}
+            </p>
             <h2 id="product-option-panel-title">
               {editing ? "Edit product option" : "Add product option"}
             </h2>
@@ -162,7 +169,7 @@ export function ProductOptionInlinePanel({
           </button>
         </header>
 
-        {editing ? (
+        {editingCategory ? (
           <p className="notice">
             <strong>
               Used by {countLabel(categoryCount, "category", "categories")}.
@@ -172,8 +179,9 @@ export function ProductOptionInlinePanel({
           </p>
         ) : (
           <p>
-            Add Colour, Size, or another parameter, then choose whether it
-            describes the product or its separately stocked variants.
+            {context === "product"
+              ? "Choose an existing reusable option or create a new one for this product only."
+              : "Add Colour, Size, or another parameter, then choose whether it describes the product or its separately stocked variants."}
           </p>
         )}
 
@@ -184,7 +192,8 @@ export function ProductOptionInlinePanel({
             </p>
           ) : null}
           <input name="categoryId" type="hidden" value={categoryId} />
-          {editing ? (
+          <input name="targetScope" type="hidden" value={context} />
+          {editingCategory ? (
             <>
               <input
                 name="attributeTypeId"
@@ -334,25 +343,96 @@ export function ProductOptionInlinePanel({
                 </label>
               </section>
             </>
+          ) : editingProduct ? (
+            <>
+              <input
+                name="existingAttributeTypeId"
+                type="hidden"
+                value={attributeType?.id ?? ""}
+              />
+              <p>
+                Editing <strong>{attributeType?.name ?? "product option"}</strong>
+              </p>
+              <section className="option-editor-section">
+                <h3>This product</h3>
+                <label className="checkbox-field">
+                  <input
+                    checked={isRequired}
+                    name="isRequired"
+                    onChange={(event) => setIsRequired(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Required for new products or stock items
+                </label>
+                <label className="checkbox-field">
+                  <input
+                    checked={isVariantAxis}
+                    name="isVariantAxis"
+                    onChange={(event) => setIsVariantAxis(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Defines independently stocked items
+                </label>
+                <label>
+                  Display order
+                  <input
+                    min="0"
+                    name="sortOrder"
+                    onChange={(event) =>
+                      setSortOrder(Number(event.target.value))
+                    }
+                    type="number"
+                    value={sortOrder}
+                  />
+                </label>
+              </section>
+            </>
           ) : (
             <>
-              <label>
-                Reuse an existing option
-                <select
-                  name="existingAttributeTypeId"
-                  onChange={(event) =>
-                    setExistingAttributeTypeId(event.target.value)
-                  }
-                  value={existingAttributeTypeId}
+              <input
+                name="existingAttributeTypeId"
+                type="hidden"
+                value={existingAttributeTypeId}
+              />
+              <section className="option-editor-section">
+                <h3>Available options</h3>
+                {availableTypes.length > 0 ? (
+                  <div className="option-value-list">
+                    {availableTypes.map((type) => (
+                      <button
+                        aria-pressed={
+                          !creatingNew &&
+                          existingAttributeTypeId === type.id
+                        }
+                        className="secondary-button"
+                        key={type.id}
+                        onClick={() => {
+                          setCreatingNew(false);
+                          setExistingAttributeTypeId(type.id);
+                        }}
+                        type="button"
+                      >
+                        {type.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="field-help">
+                    Every reusable option is already selected.
+                  </p>
+                )}
+                <button
+                  aria-pressed={creatingNew}
+                  className="text-button"
+                  onClick={() => {
+                    setExistingAttributeTypeId("");
+                    setCreatingNew(true);
+                  }}
+                  type="button"
                 >
-                  <option value="">Create a new option</option>
-                  {availableTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  + Create a new option
+                </button>
+              </section>
               {creatingNew ? (
                 <>
                   <label>
@@ -376,48 +456,61 @@ export function ProductOptionInlinePanel({
                   </label>
                 </>
               ) : null}
-              <section className="option-editor-section">
-                <h3>This category</h3>
-                <label className="checkbox-field">
-                  <input
-                    checked={isRequired}
-                    name="isRequired"
-                    onChange={(event) => setIsRequired(event.target.checked)}
-                    type="checkbox"
-                  />
-                  Required for new products or variants
-                </label>
-                <label className="checkbox-field">
-                  <input
-                    checked={isVariantAxis}
-                    name="isVariantAxis"
-                    onChange={(event) =>
-                      setIsVariantAxis(event.target.checked)
-                    }
-                    type="checkbox"
-                  />
-                  Defines independently stocked variants
-                </label>
-                <label>
-                  Display order
-                  <input
-                    min="0"
-                    name="sortOrder"
-                    onChange={(event) =>
-                      setSortOrder(Number(event.target.value))
-                    }
-                    type="number"
-                    value={sortOrder}
-                  />
-                </label>
-              </section>
+              {creatingNew || existingAttributeTypeId ? (
+                <section className="option-editor-section">
+                  <h3>
+                    {context === "product"
+                      ? "This product"
+                      : "This category"}
+                  </h3>
+                  <label className="checkbox-field">
+                    <input
+                      checked={isRequired}
+                      name="isRequired"
+                      onChange={(event) => setIsRequired(event.target.checked)}
+                      type="checkbox"
+                    />
+                    Required for new products or variants
+                  </label>
+                  <label className="checkbox-field">
+                    <input
+                      checked={isVariantAxis}
+                      name="isVariantAxis"
+                      onChange={(event) =>
+                        setIsVariantAxis(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    Defines independently stocked variants
+                  </label>
+                  <label>
+                    Display order
+                    <input
+                      min="0"
+                      name="sortOrder"
+                      onChange={(event) =>
+                        setSortOrder(Number(event.target.value))
+                      }
+                      type="number"
+                      value={sortOrder}
+                    />
+                  </label>
+                </section>
+              ) : null}
             </>
           )}
           <div className="form-actions">
             <button className="secondary-button" onClick={onClose} type="button">
               Cancel
             </button>
-            <button className="primary-button" disabled={pending} type="submit">
+            <button
+              className="primary-button"
+              disabled={
+                pending ||
+                (!editing && !creatingNew && !existingAttributeTypeId)
+              }
+              type="submit"
+            >
               {pending
                 ? "Saving…"
                 : editing
@@ -427,7 +520,7 @@ export function ProductOptionInlinePanel({
           </div>
         </form>
 
-        {editing ? (
+        {editingCategory ? (
           <section className="option-detach-section">
             <h3>Remove attachment</h3>
             {referenced ? (

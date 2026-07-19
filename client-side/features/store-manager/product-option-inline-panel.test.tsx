@@ -12,13 +12,37 @@ describe("inline product option editor", () => {
         configuredAttributeTypeIds={[]}
         onClose={() => undefined}
         onCreated={() => undefined}
-        usableAttributeTypeIds={[]}
       />,
     );
 
     expect(markup).toContain("Required for new products or variants");
     expect(markup).toContain("Defines independently stocked variants");
     expect(markup).toContain("Display order");
+  });
+
+  it("lists every reusable option before offering the creation form", () => {
+    const markup = renderToStaticMarkup(
+      <ProductOptionInlinePanel
+        attributeTypes={[
+          { id: "colour", name: "Colour" },
+          { id: "size", name: "Size" },
+        ]}
+        categoryId="pens"
+        configuredAttributeTypeIds={[]}
+        context="product"
+        onClose={() => undefined}
+        onCreated={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Available options");
+    expect(markup).toContain(">Colour<");
+    expect(markup).toContain(">Size<");
+    expect(markup).toContain("Create a new option");
+    expect(markup).not.toContain('name="parameterName"');
+    expect(markup).not.toContain('name="allowedValues"');
+    expect(markup).not.toContain("This product");
+    expect(markup).not.toContain("Category configuration");
   });
 
   it("prefills global option data and explains its impact", () => {
@@ -55,7 +79,6 @@ describe("inline product option editor", () => {
         onCreated={() => undefined}
         onDetached={() => undefined}
         usage={{ product_count: 0, variant_count: 0, product_ids: [] }}
-        usableAttributeTypeIds={["colour"]}
       />,
     );
 
@@ -115,7 +138,6 @@ describe("inline product option editor", () => {
             product_ids: ["one", "two"],
           },
         }}
-        usableAttributeTypeIds={["colour"]}
       />,
     );
 
