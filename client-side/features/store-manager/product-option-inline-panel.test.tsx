@@ -4,6 +4,23 @@ import { describe, expect, it } from "vitest";
 import { ProductOptionInlinePanel } from "./product-option-inline-panel";
 
 describe("inline product option editor", () => {
+  it("lets category parameters choose required and variant behavior", () => {
+    const markup = renderToStaticMarkup(
+      <ProductOptionInlinePanel
+        attributeTypes={[]}
+        categoryId="pens"
+        configuredAttributeTypeIds={[]}
+        onClose={() => undefined}
+        onCreated={() => undefined}
+        usableAttributeTypeIds={[]}
+      />,
+    );
+
+    expect(markup).toContain("Required for new products or variants");
+    expect(markup).toContain("Defines independently stocked variants");
+    expect(markup).toContain("Display order");
+  });
+
   it("prefills global option data and explains its impact", () => {
     const markup = renderToStaticMarkup(
       <ProductOptionInlinePanel
@@ -111,5 +128,7 @@ describe("inline product option editor", () => {
       /<button[^>]*disabled[^>]*>Remove value<\/button>/,
     );
     expect(markup).toContain("Used by 2 products");
+    expect(markup).toContain("3 variants");
+    expect(markup).toContain("View products using Blue");
   });
 });

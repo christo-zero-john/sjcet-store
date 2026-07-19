@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(20);
 
 select col_type_is(
   'public',
@@ -87,6 +87,18 @@ select has_function(
   'update_catalog_option_inline',
   array['uuid', 'uuid', 'text', 'jsonb', 'boolean', 'boolean', 'integer'],
   'global option data and category configuration update atomically'
+);
+select has_function(
+  'public',
+  'add_category_parameter_inline',
+  array['uuid', 'uuid', 'text', 'jsonb', 'boolean', 'boolean', 'integer'],
+  'inline parameter creation preserves category-owned configuration'
+);
+select is_definer(
+  'public',
+  'add_category_parameter_inline',
+  array['uuid', 'uuid', 'text', 'jsonb', 'boolean', 'boolean', 'integer'],
+  'inline parameter creation uses an authorized database boundary'
 );
 select is_definer(
   'public',

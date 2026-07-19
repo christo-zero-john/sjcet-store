@@ -2243,6 +2243,55 @@ begin
 end;
 $$;
 
+create function public.add_category_parameter_inline(
+  target_category_id uuid,
+  target_attribute_type_id uuid,
+  new_parameter_name text,
+  new_allowed_values jsonb,
+  option_is_required boolean,
+  option_is_variant_axis boolean,
+  option_sort_order integer
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  resolved_attribute_type_id uuid;
+begin
+  if actor is null or not private.is_store_operator() then
+    raise exception using
+      errcode = '42501',
+      message = 'Store-manager access is required.';
+  end if;
+
+  if option_sort_order is null or option_sort_order < 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'Option display order must be zero or greater.';
+  end if;
+
+  resolved_attribute_type_id :=
+    public.add_product_option_to_category(
+      target_category_id,
+      target_attribute_type_id,
+      new_parameter_name,
+      new_allowed_values
+    );
+
+  update public.category_attributes
+  set is_required = option_is_required,
+      is_variant_axis = option_is_variant_axis,
+      sort_order = option_sort_order
+  where category_id = target_category_id
+    and attribute_type_id = resolved_attribute_type_id;
+
+  return resolved_attribute_type_id;
+end;
+$$;
+
 create function public.set_primary_product_image(
   target_product_id uuid,
   target_image_id uuid
@@ -4245,6 +4294,15 @@ grant execute on function public.add_product_option_to_category(
   text,
   jsonb
 ) to authenticated, service_role;
+grant execute on function public.add_category_parameter_inline(
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  boolean,
+  boolean,
+  integer
+) to authenticated, service_role;
 grant execute on function public.set_primary_product_image(uuid, uuid)
   to authenticated, service_role;
 grant execute on function private.adjust_stock_internal(
@@ -4347,6 +4405,15 @@ revoke execute on function public.add_product_option_to_category(
   uuid,
   text,
   jsonb
+) from public, anon;
+revoke execute on function public.add_category_parameter_inline(
+  uuid,
+  uuid,
+  text,
+  jsonb,
+  boolean,
+  boolean,
+  integer
 ) from public, anon;
 revoke execute on function public.set_primary_product_image(uuid, uuid)
   from public, anon;

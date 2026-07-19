@@ -95,7 +95,9 @@ test.describe("product-first store manager", () => {
     await expect(
       page.getByRole("heading", { name: "Edit product option" }),
     ).toBeVisible();
-    await expect(page.getByText(/Used by \d+ categories\./)).toBeVisible();
+    await expect(
+      page.getByText(/Used by \d+ categor(?:y|ies)\./),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Close product option panel" })
       .first()

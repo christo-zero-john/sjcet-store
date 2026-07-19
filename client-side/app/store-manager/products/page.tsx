@@ -5,6 +5,7 @@ import {
   ProductList,
   type ProductListItem,
 } from "../../../features/store-manager/product-list";
+import { parseProductIds } from "../../../features/store-manager/product-filters";
 
 type ProductRow = {
   id: string;
@@ -25,6 +26,7 @@ type ProductsPageProps = Readonly<{
   searchParams: Promise<{
     q?: string;
     category?: string;
+    ids?: string;
     state?: string;
     sort?: string;
   }>;
@@ -35,6 +37,7 @@ export default async function ProductsPage({
 }: ProductsPageProps) {
   const params = await searchParams;
   const q = params.q?.trim().toLocaleLowerCase() ?? "";
+  const requestedProductIds = parseProductIds(params.ids);
   const state = ["active", "archived", "all"].includes(params.state ?? "")
     ? params.state
     : "active";
@@ -56,6 +59,12 @@ export default async function ProductsPage({
   const products = ((productsResult.data ?? []) as unknown as ProductRow[])
     .filter((product) => {
       if (state !== "all" && product.is_active !== (state === "active")) {
+        return false;
+      }
+      if (
+        requestedProductIds.size > 0 &&
+        !requestedProductIds.has(product.id)
+      ) {
         return false;
       }
       if (params.category && product.category_id !== params.category) return false;

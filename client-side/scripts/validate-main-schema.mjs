@@ -41,6 +41,18 @@ const requiredPatterns = new Map([
     /\bcreate function public\.get_catalog_option_usage\b/i,
   ],
   [
+    "category-scoped option usage",
+    /\bcreate function public\.get_category_option_usage\b/i,
+  ],
+  [
+    "inline category editing",
+    /\bcreate function public\.update_category_inline\b/i,
+  ],
+  [
+    "inline catalog option editing",
+    /\bcreate function public\.update_catalog_option_inline\b/i,
+  ],
+  [
     "attribute value removal",
     /\bcreate function public\.remove_attribute_value\b/i,
   ],
@@ -59,6 +71,10 @@ const requiredPatterns = new Map([
   [
     "inline product option creation",
     /\bcreate function public\.add_product_option_to_category\b/i,
+  ],
+  [
+    "configurable inline category parameter creation",
+    /\bcreate function public\.add_category_parameter_inline\b/i,
   ],
   ["products", /\bcreate table public\.products\b/i],
   ["product brand", /\bbrand\s+text\b/i],

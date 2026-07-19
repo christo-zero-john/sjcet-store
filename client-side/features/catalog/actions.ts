@@ -174,6 +174,7 @@ export async function addProductOptionInline(
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  const sortOrder = Number(formText(formData, "sortOrder") || "0");
 
   if (!categoryId) {
     return { error: "Choose a category before adding a product option." };
@@ -184,14 +185,20 @@ export async function addProductOptionInline(
   if (!existingAttributeTypeId && allowedValues.length === 0) {
     return { error: "Enter at least one allowed value." };
   }
+  if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
+    return { error: "Display order must be zero or greater." };
+  }
 
   const { data: attributeTypeId, error } = await supabase.rpc(
-    "add_product_option_to_category",
+    "add_category_parameter_inline",
     {
       target_category_id: categoryId,
       target_attribute_type_id: existingAttributeTypeId,
       new_parameter_name: parameterName,
       new_allowed_values: allowedValues,
+      option_is_required: formData.get("isRequired") === "on",
+      option_is_variant_axis: formData.get("isVariantAxis") === "on",
+      option_sort_order: sortOrder,
     },
   );
   if (error) {

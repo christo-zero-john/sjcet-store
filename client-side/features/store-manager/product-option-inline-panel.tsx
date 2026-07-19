@@ -42,6 +42,14 @@ type ProductOptionInlinePanelProps = Readonly<{
 
 const INITIAL_STATE: InlineProductOptionState = {};
 
+function countLabel(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function ProductOptionInlinePanel({
   intent = "create",
   categoryId,
@@ -78,6 +86,9 @@ export function ProductOptionInlinePanel({
   );
   const [isVariantAxis, setIsVariantAxis] = useState(
     categoryAttribute?.is_variant_axis ?? true,
+  );
+  const [sortOrder, setSortOrder] = useState(
+    categoryAttribute?.sort_order ?? configuredAttributeTypeIds.length,
   );
   const [values, setValues] = useState<OptionValueDraft[]>(() =>
     attributeValues.map((value) => ({
@@ -136,7 +147,7 @@ export function ProductOptionInlinePanel({
       <div className="side-panel-content">
         <header>
           <div>
-            <p className="eyebrow">Product variants</p>
+            <p className="eyebrow">Category configuration</p>
             <h2 id="product-option-panel-title">
               {editing ? "Edit product option" : "Add product option"}
             </h2>
@@ -153,13 +164,16 @@ export function ProductOptionInlinePanel({
 
         {editing ? (
           <p className="notice">
-            <strong>Used by {categoryCount} categories.</strong> Changing the
-            option name or value labels updates every category using it.
+            <strong>
+              Used by {countLabel(categoryCount, "category", "categories")}.
+            </strong>{" "}
+            Changing the option name or value labels updates every category
+            using it.
           </p>
         ) : (
           <p>
-            Add Colour, Size, or another option when each value needs its own
-            SKU and stock.
+            Add Colour, Size, or another parameter, then choose whether it
+            describes the product or its separately stocked variants.
           </p>
         )}
 
@@ -227,10 +241,33 @@ export function ProductOptionInlinePanel({
                         Remove value
                       </button>
                       {value.id &&
-                      (valueUsage[value.id]?.product_count ?? 0) > 0 ? (
-                        <small>
-                          Used by {valueUsage[value.id]?.product_count} products
-                        </small>
+                      ((valueUsage[value.id]?.product_count ?? 0) > 0 ||
+                        (valueUsage[value.id]?.variant_count ?? 0) > 0) ? (
+                        <>
+                          <small>
+                            Used by{" "}
+                            {countLabel(
+                              valueUsage[value.id]?.product_count ?? 0,
+                              "product",
+                            )}
+                            {" · "}
+                            {countLabel(
+                              valueUsage[value.id]?.variant_count ?? 0,
+                              "variant",
+                            )}
+                          </small>
+                          {(valueUsage[value.id]?.product_ids.length ?? 0) >
+                          0 ? (
+                            <Link
+                              className="text-button"
+                              href={`/store-manager/products?ids=${valueUsage[
+                                value.id
+                              ]?.product_ids.join(",")}&state=all`}
+                            >
+                              View products using {value.value}
+                            </Link>
+                          ) : null}
+                        </>
                       ) : null}
                     </div>
                   ))}
@@ -272,7 +309,7 @@ export function ProductOptionInlinePanel({
                     onChange={(event) => setIsRequired(event.target.checked)}
                     type="checkbox"
                   />
-                  Required for new variants
+                  Required for new products or variants
                 </label>
                 <label className="checkbox-field">
                   <input
@@ -283,11 +320,18 @@ export function ProductOptionInlinePanel({
                   />
                   Defines independently stocked variants
                 </label>
-                <input
-                  name="sortOrder"
-                  type="hidden"
-                  value={categoryAttribute?.sort_order ?? 0}
-                />
+                <label>
+                  Display order
+                  <input
+                    min="0"
+                    name="sortOrder"
+                    onChange={(event) =>
+                      setSortOrder(Number(event.target.value))
+                    }
+                    type="number"
+                    value={sortOrder}
+                  />
+                </label>
               </section>
             </>
           ) : (
@@ -332,10 +376,41 @@ export function ProductOptionInlinePanel({
                   </label>
                 </>
               ) : null}
-              <p className="field-help">
-                This option is required for new variants. You will add each
-                sellable variant explicitly.
-              </p>
+              <section className="option-editor-section">
+                <h3>This category</h3>
+                <label className="checkbox-field">
+                  <input
+                    checked={isRequired}
+                    name="isRequired"
+                    onChange={(event) => setIsRequired(event.target.checked)}
+                    type="checkbox"
+                  />
+                  Required for new products or variants
+                </label>
+                <label className="checkbox-field">
+                  <input
+                    checked={isVariantAxis}
+                    name="isVariantAxis"
+                    onChange={(event) =>
+                      setIsVariantAxis(event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  Defines independently stocked variants
+                </label>
+                <label>
+                  Display order
+                  <input
+                    min="0"
+                    name="sortOrder"
+                    onChange={(event) =>
+                      setSortOrder(Number(event.target.value))
+                    }
+                    type="number"
+                    value={sortOrder}
+                  />
+                </label>
+              </section>
             </>
           )}
           <div className="form-actions">
@@ -344,7 +419,7 @@ export function ProductOptionInlinePanel({
             </button>
             <button className="primary-button" disabled={pending} type="submit">
               {pending
-                ? "Saving..."
+                ? "Saving…"
                 : editing
                   ? "Save changes"
                   : "Add option"}
@@ -357,8 +432,10 @@ export function ProductOptionInlinePanel({
             <h3>Remove attachment</h3>
             {referenced ? (
               <p className="field-help">
-                {usage.product_count} products use this option in this category.
-                Remove it only after those products stop using it.
+                {countLabel(usage.product_count, "product")} use this option
+                in this category across{" "}
+                {countLabel(usage.variant_count, "variant")}. Remove it only
+                after those products stop using it.
               </p>
             ) : (
               <p className="field-help">
@@ -369,7 +446,7 @@ export function ProductOptionInlinePanel({
             {usage.product_ids.length > 0 ? (
               <Link
                 className="text-button"
-                href={`/store-manager/products?ids=${usage.product_ids.join(",")}`}
+                href={`/store-manager/products?ids=${usage.product_ids.join(",")}&state=all`}
               >
                 View products
               </Link>

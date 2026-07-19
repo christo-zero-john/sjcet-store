@@ -66,6 +66,26 @@ type CreatedCategoryResult = InlineCategoryState & {
   category: ProductCategory;
 };
 
+export function effectiveCategoryAttributeTypeIds(
+  categories: readonly ProductCategory[],
+  configurations: readonly CategoryAttributeConfiguration[],
+  categoryId: string,
+) {
+  const category = categories.find((item) => item.id === categoryId);
+  const scope = new Set(
+    [category?.parent_id, categoryId].filter(
+      (id): id is string => Boolean(id),
+    ),
+  );
+  return [
+    ...new Set(
+      configurations
+        .filter((configuration) => scope.has(configuration.category_id))
+        .map((configuration) => configuration.attribute_type_id),
+    ),
+  ];
+}
+
 export function ProductForm({
   action,
   categories,
@@ -138,6 +158,21 @@ export function ProductForm({
   );
   const variantAttributes = configuredAttributes.filter(
     (configuration) => configuration.is_variant_axis,
+  );
+  const optionTargetConfiguredAttributeTypeIds = useMemo(
+    () =>
+      optionPanelTarget
+        ? effectiveCategoryAttributeTypeIds(
+            availableCategories,
+            availableCategoryAttributes,
+            optionPanelTarget.categoryId,
+          )
+        : [],
+    [
+      availableCategories,
+      availableCategoryAttributes,
+      optionPanelTarget,
+    ],
   );
 
   const mergeCreatedCategory = useCallback(
@@ -593,9 +628,9 @@ export function ProductForm({
           categoryAttribute={optionEditor?.categoryAttribute}
           categoryCount={optionEditor?.categoryCount}
           categoryId={optionPanelTarget.categoryId}
-          configuredAttributeTypeIds={configuredAttributes.map(
-            (configuration) => configuration.attribute_type_id,
-          )}
+          configuredAttributeTypeIds={
+            optionTargetConfiguredAttributeTypeIds
+          }
           usableAttributeTypeIds={[
             ...new Set(
               availableAttributeValues.map(

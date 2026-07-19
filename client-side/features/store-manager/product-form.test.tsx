@@ -1,9 +1,38 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ProductForm } from "./product-form";
+import {
+  effectiveCategoryAttributeTypeIds,
+  ProductForm,
+} from "./product-form";
 
 describe("product form", () => {
+  it("resolves configured options from the drawer target category", () => {
+    expect(
+      effectiveCategoryAttributeTypeIds(
+        [
+          { id: "parent", name: "Parent", parent_id: null },
+          { id: "child", name: "Child", parent_id: "parent" },
+        ],
+        [
+          {
+            category_id: "parent",
+            attribute_type_id: "colour",
+            is_required: true,
+            is_variant_axis: true,
+          },
+          {
+            category_id: "child",
+            attribute_type_id: "size",
+            is_required: true,
+            is_variant_axis: true,
+          },
+        ],
+        "parent",
+      ),
+    ).toEqual(["colour"]);
+  });
+
   it("lets a manager add a variant option when the category has none", () => {
     const markup = renderToStaticMarkup(
       <ProductForm

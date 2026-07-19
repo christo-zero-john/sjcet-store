@@ -15,10 +15,16 @@ describe("inline product option boundary", () => {
 
     expect(actionSource).toContain("export async function addProductOptionInline");
     expect(actionSource).toMatch(
-      /rpc\(\s*"add_product_option_to_category"/,
+      /rpc\(\s*"add_category_parameter_inline"/,
     );
     expect(schemaSource).toContain(
       "create function public.add_product_option_to_category(",
+    );
+    expect(schemaSource).toContain(
+      "create function public.add_category_parameter_inline(",
+    );
+    expect(schemaSource).toMatch(
+      /revoke execute on function public\.add_category_parameter_inline\([\s\S]*?from public, anon;/,
     );
     expect(schemaSource).toContain(
       "'catalog.product_option_added_to_category'",
@@ -65,6 +71,9 @@ describe("inline product option boundary", () => {
     );
     expect(editingSource).toContain(
       "create function public.update_category_inline(",
+    );
+    expect(editingSource).toContain(
+      "create function public.add_category_parameter_inline(",
     );
     expect(editingSource).toContain(
       "create function public.update_catalog_option_inline(",
