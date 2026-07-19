@@ -32,11 +32,50 @@ in `docs/architecture/project-foundation.md`.
    quantity, and line-total snapshots.
 8. The selected payment flow is completed:
    - Cash: enter the amount tendered, show the change due, and confirm receipt.
-   - Online: create a Dodo Payments checkout session for the exact order total.
+   - Online: create a provider-neutral checkout for the exact order total,
+     render an application-owned QR, and let the authenticated claimant review
+     the frozen order before opening the hosted provider checkout.
 9. After successful payment confirmation, the order becomes `paid`, stock is
    deducted atomically, and the bill can be printed.
 10. If payment is cancelled or fails, the order remains unpaid and stock is not
     deducted.
+
+### 3.1 Basket and collection behavior
+
+- Adding the same variant merges it into one basket line.
+- Quantity changes must remain positive integers and cannot exceed displayed
+  available stock.
+- Changing quantity resets that line's physical-collected checkbox.
+- Collection checkboxes and collected progress are manager-only transient UI
+  state. They do not change orders, reservations, inventory, or payments.
+- Uncollected lines warn the manager but do not block checkout.
+- The server ignores client-supplied prices, totals, stock values, actor IDs,
+  and payment amounts.
+
+### 3.2 Online QR handoff
+
+- Online order creation freezes line snapshots and totals before provider
+  checkout creation.
+- The QR contains only an application-owned HTTPS handoff URL with a
+  high-entropy opaque token. It never contains raw order data, an internal
+  order UUID, a provider checkout URL, or a secret.
+- Only a SHA-256 hash of the handoff token is stored.
+- Opening the handoff requires the shared authentication boundary. This module
+  does not implement student or guest authentication.
+- The first authenticated user presenting a valid handoff may claim it. A
+  successful claim also assigns the order's `student_id`. A different user
+  cannot take over an already claimed handoff.
+- The handoff page is a read-only shared orders/payments surface. It shows the
+  order number, immutable lines, quantities, prices, total, payment state, and
+  a provider-neutral **Pay securely** action.
+- The provider URL is resolved and validated server-side immediately before
+  redirect. It is not accepted from the browser.
+- Invalid, expired, revoked, or already-claimed handoffs reveal no order data.
+- A manager may rotate an unclaimed awaiting-payment handoff after losing the
+  raw token. Rotation invalidates the old QR. Claimed or terminal handoffs
+  cannot rotate.
+- The natural-language UI authority is
+  `docs/testing/store-manager-order-basket-ui-acceptance.md`.
 
 ## 4. Inventory management
 
@@ -150,6 +189,11 @@ in `docs/architecture/project-foundation.md`.
   contract. Payment management never writes product or stock data directly.
 - The store-manager interface composes catalog, inventory, order, and payment
   capabilities while their business rules remain in their owning features.
+- Online awaiting-payment orders use bounded stock reservations. A reservation
+  reduces available stock but does not change physical current stock or create
+  a sale movement. Successful payment consumes the reservation and deducts
+  physical stock once; cancellation, checkout-creation failure, or expiration
+  releases it without a stock change.
 
 ## 5. Order management
 
@@ -171,8 +215,12 @@ in `docs/architecture/project-foundation.md`.
 
 ## 7. Online payments
 
-- Use Dodo Payments Checkout Sessions with one reusable, one-time
-  Pay-What-You-Want product configured in the Dodo dashboard.
+- Application order and payment code depends on a provider-neutral adapter.
+  The initial adapter uses Dodo Payments Checkout Sessions with one reusable,
+  one-time Pay-What-You-Want product configured in the Dodo dashboard.
+- Replacing Dodo must require a new provider adapter, provider configuration,
+  and webhook verification/normalization, not changes to basket, order, QR,
+  inventory, history, or bill logic.
 - The server supplies the checkout amount in paise. The amount equals the
   server-calculated order total and is fixed for that checkout.
 - The browser must never supply or override the payable amount.
@@ -183,6 +231,14 @@ in `docs/architecture/project-foundation.md`.
 - Verify webhook signatures and process webhook events idempotently.
 - Reject a success event if its currency or amount does not match the order.
 - Do not allow partial payments or discount entry in the hosted checkout.
+- Authenticated claimants receive payment status through purpose-built
+  functions, not direct `payment_attempts` table access.
+- A valid but mismatched or late success event enters reconciliation handling;
+  it never silently marks an invalid order paid or consumes unavailable stock.
+- Provider checkout creation uses the payment-attempt ID as its idempotency
+  key. Definitive rejection may release reservations. Ambiguous timeouts and
+  post-creation attachment failures retain reconciliation state and never
+  assume that the provider created nothing.
 
 ## 8. Order and payment states
 
@@ -238,9 +294,22 @@ them separate in the model so later modules can support collection workflows.
     variants, archive and restore them, and review every stock movement.
 12. Inventory search and stock-state filters correctly distinguish healthy,
     low-stock, out-of-stock, and archived variants.
+13. An online checkout displays an application-owned QR whose authenticated
+    claimant can review frozen order details before opening the provider.
+14. A second authenticated user cannot take over a claimed payment handoff.
+15. Cancelling or expiring an unpaid online order releases reservations
+    without changing physical stock.
+16. The payment orchestration contract passes against a fake provider without
+    importing Dodo types outside the Dodo adapter.
+17. The order-basket implementation does not modify student feature,
+    dashboard, or student requirement files.
 
 ## 11. Store-manager user experience acceptance
 
 The store-manager interface follows the product-first acceptance contract in
 `docs/testing/store-manager-product-first-ui-acceptance.md`. Implementations and
 reviews must verify every applicable `SM-UX-*` scenario in that document.
+
+The counter-sale, order, QR, and payment flow follows
+`docs/testing/store-manager-order-basket-ui-acceptance.md`. Implementations and
+reviews must verify every applicable `SM-ORDER-*` scenario in that document.

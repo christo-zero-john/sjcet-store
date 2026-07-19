@@ -1,5 +1,12 @@
 # Shared Foundation and Store Manager Implementation Plan
 
+> **Supersession notice (2026-07-19):** Tasks 7 through 10 are replaced by
+> `docs/superpowers/plans/2026-07-19-store-manager-order-basket.md`. Use the
+> newer plan for counter orders, cash, provider-neutral online payments,
+> application-owned QR handoff, history, and bills. Earlier completed
+> foundation and inventory work remains authoritative where the plans do not
+> conflict.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended when explicitly authorized) or `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver a secure shared Next.js and Supabase foundation plus a store-manager MVP for dynamic catalog configuration, variant inventory, counter sales, cash payments, and exact-amount Dodo checkout.

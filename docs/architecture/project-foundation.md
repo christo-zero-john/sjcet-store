@@ -41,7 +41,7 @@ client-side/
     catalog/              categories, attributes, products, and variants
     inventory/            variant stock operations
     orders/               order creation and history
-    payments/             provider-neutral payment contracts
+    payments/             provider-neutral payment, QR, and webhook contracts
     store-manager/        counter-sale composition
   lib/
     env/                  validated server/client environment
@@ -195,9 +195,11 @@ write another module's tables directly.
   stock-adjustment contract. Application code never writes `current_stock`
   directly.
 - `orders` consumes active catalog variants and asks inventory operations to
-  validate or deduct quantities. It does not edit catalog definitions.
-- `payments` consumes a frozen order total and reports verified payment state.
-  It does not edit catalog or stock tables directly.
+  validate, reserve, release, or deduct quantities. It does not edit catalog
+  definitions.
+- `payments` consumes a frozen order total, creates provider-neutral checkout
+  attempts, owns the authenticated QR handoff, and reports verified payment
+  state. It does not edit catalog or stock tables directly.
 - `store-manager` composes these capabilities into manager screens without
   taking ownership of their data rules.
 
@@ -212,18 +214,29 @@ For dynamic store totals:
 
 1. create and freeze order-line price snapshots;
 2. calculate the total in a database transaction using integer paise;
-3. create a Dodo Checkout Session server-side with the configured one-time
-   Pay-What-You-Want product;
-4. pass one product-cart item with `quantity: 1` and `amount: order.total_paise`;
-5. attach `order_id` and module metadata;
-6. return only the hosted checkout URL to the manager;
-7. verify Dodo webhook signature on the raw request body;
-8. insert the provider event ID into `processed_webhooks`;
-9. compare provider amount/currency with the frozen order;
-10. atomically transition payment/order and deduct stock once.
+3. reserve available stock for the bounded online-payment window without
+   changing physical current stock;
+4. create a hosted checkout through a provider-neutral server interface;
+5. let the initial Dodo adapter pass one Pay-What-You-Want product-cart item
+   with `quantity: 1` and `amount: order.total_paise`;
+6. attach `order_id`, order number, and module metadata;
+7. render an application-owned QR whose opaque handoff token resolves to a
+   shared authenticated order-summary page;
+8. resolve the provider checkout URL only at a validated server redirect;
+9. verify the provider webhook signature on the raw request body;
+10. insert the provider event ID into `processed_webhooks`;
+11. compare provider checkout reference, order metadata, amount, and currency
+    with the frozen attempt and order; and
+12. atomically transition payment/order, consume reservations, and deduct
+    stock once.
 
 The return URL never confirms payment. It shows a waiting state and asks the
 server for the current order status.
+
+Provider-specific SDK types, request fields, webhook payloads, and signature
+verification stay inside the provider adapter. Basket, order, QR, inventory,
+history, and bill code consume provider-neutral contracts so a later provider
+can be introduced without changing those features.
 
 ## 8. API and server-operation conventions
 
@@ -237,6 +250,8 @@ server for the current order status.
   browser as authoritative.
 - Every retryable mutation has an idempotency key or conditional state update.
 - Log identifiers and state transitions, never secrets or full payment payloads.
+- Authentication return destinations are relative, allowlisted application
+  paths. Payment handoffs may preserve only `/pay/` destinations.
 
 ## 9. Data and transaction rules
 
@@ -252,6 +267,9 @@ server for the current order status.
   archive state.
 - Stock changes occur through one database function that locks affected variant
   rows in a stable order and rejects negative stock.
+- Online reservations reduce available stock but do not change
+  `product_variants.current_stock`. Successful payment consumes reservations;
+  cancellation, checkout failure, or expiration releases them.
 - Webhook processing is idempotent through a unique provider event ID.
 - All public-schema tables enable RLS in the migration that creates them.
 
