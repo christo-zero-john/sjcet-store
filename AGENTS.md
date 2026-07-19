@@ -39,6 +39,13 @@ Project skills live in `.agents/skills/` and `.claude/skills/`.
   foundations.
 - Treat `docs/supabase/main_schema.sql` as the canonical clean database
   setup. Update it in the same change as every schema migration.
+- Never rename or delete an existing migration. Every new migration filename
+  must use
+  `YYYYMMDDHHMMSS_<slno>-<dd>-<MM>-<yyyy>-<name>.sql`, where the first
+  segment is the Supabase-compatible UTC version, `slno` is a zero-padded
+  three-digit repository sequence number, the date is the migration creation
+  date, and `name` is lowercase kebab-case. Example:
+  `20260719123000_006-19-07-2026-add-order-payments.sql`.
 - Keep `main_schema.sql` free of migration-history patches, obsolete objects,
   and seed data. It must create the current schema from an empty Supabase
   database.

@@ -48,6 +48,17 @@ Suggested ownership boundaries:
 - Do not change another module's contract without updating its requirement and
   notifying its owner in the pull request.
 - Database migrations are append-only after merge.
+- Existing migrations must never be renamed or deleted. Every new migration
+  filename must follow
+  `YYYYMMDDHHMMSS_<slno>-<dd>-<MM>-<yyyy>-<name>.sql`.
+  - `YYYYMMDDHHMMSS` is the Supabase-compatible UTC migration version.
+  - `slno` is the next zero-padded three-digit repository sequence number.
+  - `dd-MM-yyyy` is the migration creation date.
+  - `name` is a descriptive lowercase kebab-case name.
+  - Example:
+    `20260719123000_006-19-07-2026-add-order-payments.sql`.
+  The five migrations created before this convention are grandfathered and
+  must retain their current filenames.
 - Every schema migration must update
   `docs/supabase/main_schema.sql` in the same pull request.
 - `main_schema.sql` is a clean snapshot for an empty database. Never copy
