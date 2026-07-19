@@ -13,9 +13,14 @@ import type {
   InlineProductOptionState,
 } from "../catalog/actions";
 import { loadProductOptionInlineEditor } from "../catalog/actions";
+import {
+  addProductOption,
+  removeProductOption,
+} from "../catalog/product-draft";
 import type {
   CatalogOptionEditorResult,
   CategoryAttributeConfiguration,
+  ProductOptionConfiguration,
   ProductCategory,
 } from "../catalog/contracts";
 import { CategoryInlinePanel } from "./category-inline-panel";
@@ -55,9 +60,14 @@ type CategoryPanelTarget =
     };
 
 type OptionPanelTarget =
-  | { intent: "create"; categoryId: string }
+  | {
+      intent: "create";
+      context: "category" | "product";
+      categoryId: string;
+    }
   | {
       intent: "edit";
+      context: "category" | "product";
       categoryId: string;
       attributeTypeId: string;
     };
@@ -127,6 +137,9 @@ export function ProductForm({
     useState<CategoryAttributeConfiguration | null>(null);
   const [optionLoading, startOptionTransition] = useTransition();
   const [productName, setProductName] = useState("");
+  const [selectedProductOptions, setSelectedProductOptions] = useState<
+    ProductOptionConfiguration[]
+  >([]);
 
   const rootCategories = availableCategories.filter(
     (category) => !category.parent_id,
@@ -136,22 +149,12 @@ export function ProductForm({
   );
   const finalCategoryId = subcategoryId || parentId;
 
-  const configuredAttributes = useMemo(() => {
-    const resolved = new Map<string, CategoryAttributeConfiguration>();
-    for (const categoryId of [parentId, finalCategoryId]) {
-      if (!categoryId) continue;
-      for (const configuration of availableCategoryAttributes) {
-        if (configuration.category_id === categoryId) {
-          resolved.set(configuration.attribute_type_id, configuration);
-        }
-      }
-    }
-    return [...resolved.values()];
-  }, [
-    availableCategoryAttributes,
-    finalCategoryId,
-    parentId,
-  ]);
+  const configuredAttributes = selectedProductOptions.map(
+    (configuration) => ({
+      ...configuration,
+      category_id: finalCategoryId,
+    }),
+  );
 
   const sharedAttributes = configuredAttributes.filter(
     (configuration) => !configuration.is_variant_axis,
@@ -161,7 +164,11 @@ export function ProductForm({
   );
   const optionTargetConfiguredAttributeTypeIds = useMemo(
     () =>
-      optionPanelTarget
+      optionPanelTarget?.context === "product"
+        ? selectedProductOptions.map(
+            (configuration) => configuration.attribute_type_id,
+          )
+        : optionPanelTarget
         ? effectiveCategoryAttributeTypeIds(
             availableCategories,
             availableCategoryAttributes,
@@ -172,6 +179,7 @@ export function ProductForm({
       availableCategories,
       availableCategoryAttributes,
       optionPanelTarget,
+      selectedProductOptions,
     ],
   );
 
@@ -273,6 +281,12 @@ export function ProductForm({
         ),
         ...(result.categoryAttributes ?? []),
       ]);
+      if (result.productOption) {
+        const productOption = result.productOption;
+        setSelectedProductOptions((current) =>
+          addProductOption(current, productOption),
+        );
+      }
       setOptionEditor(null);
       setOptionPanelTarget(null);
     },
@@ -316,6 +330,7 @@ export function ProductForm({
         setOptionEditor(result.editor);
         setOptionPanelTarget({
           intent: "edit",
+          context: "category",
           categoryId: configuration.category_id,
           attributeTypeId: configuration.attribute_type_id,
         });
@@ -440,6 +455,11 @@ export function ProductForm({
               Edit selected subcategory
             </button>
             <input name="categoryId" type="hidden" value={finalCategoryId} />
+            <input
+              name="selectedProductOptions"
+              type="hidden"
+              value={JSON.stringify(selectedProductOptions)}
+            />
             <label className="wide-field">
               Description
               <textarea name="description" rows={3} />
@@ -514,6 +534,7 @@ export function ProductForm({
                 setOptionEditor(null);
                 setOptionPanelTarget({
                   intent: "create",
+                  context: "product",
                   categoryId: finalCategoryId,
                 });
               }}
@@ -535,7 +556,36 @@ export function ProductForm({
                     }`}
                     className="product-option-chip"
                     disabled={optionLoading}
-                    onClick={() => openOptionEditor(configuration)}
+                    onClick={() => {
+                      const attributeType = availableAttributeTypes.find(
+                        (type) =>
+                          type.id === configuration.attribute_type_id,
+                      );
+                      if (!attributeType) return;
+                      setOptionEditor({
+                        attributeType,
+                        attributeValues: availableAttributeValues.filter(
+                          (value) =>
+                            value.attribute_type_id ===
+                            configuration.attribute_type_id,
+                        ),
+                        categoryAttribute: configuration,
+                        categoryCount: 0,
+                        usage: {
+                          product_count: 0,
+                          variant_count: 0,
+                          product_ids: [],
+                        },
+                        valueUsage: {},
+                      });
+                      setOptionPanelTarget({
+                        intent: "edit",
+                        context: "product",
+                        categoryId: finalCategoryId,
+                        attributeTypeId:
+                          configuration.attribute_type_id,
+                      });
+                    }}
                     type="button"
                   >
                     {availableAttributeTypes.find(
@@ -543,6 +593,20 @@ export function ProductForm({
                         type.id === configuration.attribute_type_id,
                     )?.name ?? "Product option"}
                     <span aria-hidden="true">Edit</span>
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      setSelectedProductOptions((current) =>
+                        removeProductOption(
+                          current,
+                          configuration.attribute_type_id,
+                        ),
+                      )
+                    }
+                    type="button"
+                  >
+                    Remove from product
                   </button>
                 </li>
               ))}
@@ -612,7 +676,11 @@ export function ProductForm({
           onAddParameter={(categoryId) => {
             setCategoryPanelTarget(null);
             setOptionEditor(null);
-            setOptionPanelTarget({ intent: "create", categoryId });
+            setOptionPanelTarget({
+              intent: "create",
+              context: "category",
+              categoryId,
+            });
           }}
           onEditOption={(configuration) => {
             setCategoryPanelTarget(null);
@@ -628,16 +696,10 @@ export function ProductForm({
           categoryAttribute={optionEditor?.categoryAttribute}
           categoryCount={optionEditor?.categoryCount}
           categoryId={optionPanelTarget.categoryId}
+          context={optionPanelTarget.context}
           configuredAttributeTypeIds={
             optionTargetConfiguredAttributeTypeIds
           }
-          usableAttributeTypeIds={[
-            ...new Set(
-              availableAttributeValues.map(
-                (value) => value.attribute_type_id,
-              ),
-            ),
-          ]}
           intent={optionPanelTarget.intent}
           onClose={() => {
             setOptionPanelTarget(null);

@@ -50,7 +50,7 @@ describe("product form", () => {
     );
   });
 
-  it("separates hierarchy, shared specifications, and sellable variants", () => {
+  it("keeps category suggestions unselected until the manager adds them", () => {
     const markup = renderToStaticMarkup(
       <ProductForm
         attributeTypes={[
@@ -85,13 +85,12 @@ describe("product form", () => {
     expect(markup).toContain("Parent category");
     expect(markup).toContain("Subcategory");
     expect(markup).toContain("Brand");
-    expect(markup).toContain("Product specifications");
-    expect(markup).toContain("Ink type");
-    expect(markup).toContain("Ballpoint");
-    expect(markup).toContain("Sellable variants");
-    expect(markup).toContain("Colour");
-    expect(markup).toContain("Blue");
-    expect(markup).toContain("Add variant");
+    expect(markup).not.toContain("Product specifications");
+    expect(markup).toContain("No options yet");
+    expect(markup).toContain("Price and stock");
+    expect(markup).not.toContain("Sellable variants");
+    expect(markup).not.toContain(">Blue<");
+    expect(markup).not.toContain("+ Add variant");
     expect(markup).toContain("Barcode");
     expect(markup).toContain("SKU");
     expect(markup).toContain("Price");
@@ -100,6 +99,8 @@ describe("product form", () => {
     expect(markup).toContain("+ Create subcategory");
     expect(markup).toContain("Edit selected parent category");
     expect(markup).toContain("Edit selected subcategory");
-    expect(markup).toContain('aria-label="Edit Colour"');
+    expect(markup).not.toContain('aria-label="Edit Colour"');
+    expect(markup).toContain('name="selectedProductOptions"');
+    expect(markup).toContain('value="[]"');
   });
 });
