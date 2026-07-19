@@ -120,6 +120,18 @@ const requiredPatterns = new Map([
   ],
   ["stock reservations", /\bcreate table public\.stock_reservations\b/i],
   ["payment handoffs", /\bcreate table private\.payment_handoffs\b/i],
+  [
+    "sellable variant search",
+    /\bcreate function public\.search_sellable_variants\b/i,
+  ],
+  [
+    "online order function",
+    /\bcreate function public\.create_online_counter_order\b/i,
+  ],
+  [
+    "cash order function",
+    /\bcreate function public\.complete_cash_counter_sale\b/i,
+  ],
   ["college signup hook", /\bcreate function private\.hook_restrict_college_signup\b/i],
   ["row-level security", /\benable row level security\s*;/i],
 ]);
