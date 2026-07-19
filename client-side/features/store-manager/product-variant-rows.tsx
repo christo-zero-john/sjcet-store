@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { suggestSku } from "../catalog/sku";
 
@@ -39,6 +39,18 @@ type ProductVariantRowsProps = Readonly<{
   variantAttributes: readonly CategoryAttribute[];
 }>;
 
+export function retainSelectedAttributes(
+  attributes: Readonly<Record<string, string>>,
+  selectedAttributeTypeIds: readonly string[],
+): Record<string, string> {
+  const selected = new Set(selectedAttributeTypeIds);
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([attributeTypeId]) =>
+      selected.has(attributeTypeId),
+    ),
+  );
+}
+
 function newRow(key = crypto.randomUUID()): VariantRow {
   return {
     key,
@@ -59,6 +71,31 @@ export function ProductVariantRows({
 }: ProductVariantRowsProps) {
   const [rows, setRows] = useState<VariantRow[]>([newRow("initial")]);
   const hasVariantOptions = variantAttributes.length > 0;
+  const selectedAttributeTypeIds = variantAttributes.map(
+    (configuration) => configuration.attribute_type_id,
+  );
+  const selectedAttributeSignature =
+    selectedAttributeTypeIds.toSorted().join(",");
+
+  useEffect(() => {
+    // Removing an option is an explicit destructive draft action: clear only
+    // that option's nested values while preserving SKU, price, and stock.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRows((current) =>
+      current.map((row) => {
+        const attributes = retainSelectedAttributes(
+          row.attributes,
+          selectedAttributeTypeIds,
+        );
+        return Object.keys(attributes).length ===
+          Object.keys(row.attributes).length
+          ? row
+          : { ...row, attributes };
+      }),
+    );
+    // The signature changes only when product-option membership changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAttributeSignature]);
 
   function updateRow(key: string, change: Partial<VariantRow>) {
     setRows((current) =>
