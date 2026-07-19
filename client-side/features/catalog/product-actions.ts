@@ -16,6 +16,7 @@ import {
 } from "./product-images";
 import {
   parseProductVariants,
+  selectedProductOptions,
   selectedProductValues,
 } from "./product-draft";
 
@@ -45,10 +46,12 @@ export async function createProduct(formData: FormData) {
   const { supabase, user } = await requireStoreOperator();
 
   let variants: ReturnType<typeof parseProductVariants>;
+  let productOptions: ReturnType<typeof selectedProductOptions>;
   let primaryImage: File | null = null;
   const variantImages = new Map<string, File>();
   try {
     variants = parseProductVariants(formData);
+    productOptions = selectedProductOptions(formData);
     const imageValue = formData.get("primaryImage");
     if (imageValue instanceof File && imageValue.size > 0) {
       primaryImage = validateProductImage(imageValue);
@@ -74,6 +77,7 @@ export async function createProduct(formData: FormData) {
     product_brand: formText(formData, "brand") || null,
     product_description: formText(formData, "description"),
     selected_product_values: selectedProductValues(formData),
+    selected_product_options: productOptions,
     target_variants: variants.map((variant) => ({
       client_key: variant.clientKey,
       sku: variant.sku,

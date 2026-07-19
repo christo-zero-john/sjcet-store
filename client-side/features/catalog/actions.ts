@@ -17,6 +17,7 @@ import type {
   CatalogOptionUsage,
   CategoryOptionUsage,
   CategoryAttributeConfiguration,
+  ProductOptionConfiguration,
   ProductCategory,
 } from "./contracts";
 
@@ -33,6 +34,7 @@ export type InlineProductOptionState = Readonly<{
   attributeTypes?: readonly CatalogAttributeType[];
   attributeValues?: readonly CatalogAttributeValue[];
   categoryAttributes?: readonly CategoryAttributeConfiguration[];
+  productOption?: ProductOptionConfiguration;
   editor?: CatalogOptionEditorResult;
   usage?: CategoryOptionUsage;
   detachedCategoryId?: string;
@@ -165,8 +167,9 @@ export async function addProductOptionInline(
   _previousState: InlineProductOptionState,
   formData: FormData,
 ): Promise<InlineProductOptionState> {
-  const { supabase } = await requireStoreOperator();
+  const { supabase, user } = await requireStoreOperator();
   const categoryId = formText(formData, "categoryId");
+  const targetScope = formText(formData, "targetScope") || "category";
   const existingAttributeTypeId =
     formText(formData, "existingAttributeTypeId") || null;
   const parameterName = formText(formData, "parameterName") || null;
@@ -176,7 +179,7 @@ export async function addProductOptionInline(
     .filter(Boolean);
   const sortOrder = Number(formText(formData, "sortOrder") || "0");
 
-  if (!categoryId) {
+  if (!categoryId && targetScope === "category") {
     return { error: "Choose a category before adding a product option." };
   }
   if (!existingAttributeTypeId && !parameterName) {
@@ -187,6 +190,83 @@ export async function addProductOptionInline(
   }
   if (!Number.isSafeInteger(sortOrder) || sortOrder < 0) {
     return { error: "Display order must be zero or greater." };
+  }
+
+  if (targetScope === "product") {
+    let attributeTypeId = existingAttributeTypeId;
+
+    if (!attributeTypeId) {
+      const { data: createdType, error: typeError } = await supabase
+        .from("attribute_types")
+        .insert({
+          name: parameterName,
+          slug: catalogSlug(parameterName ?? ""),
+          created_by: user.id,
+        })
+        .select("id,name")
+        .single();
+      if (typeError || !createdType) {
+        return {
+          code: mutationCode(typeError?.code),
+          error: typeError?.message ?? "The reusable option could not be created.",
+        };
+      }
+      attributeTypeId = createdType.id;
+      const { error: valuesError } = await supabase
+        .from("attribute_values")
+        .insert(
+          allowedValues.map((value, index) => ({
+            attribute_type_id: attributeTypeId,
+            value,
+            sort_order: index,
+            created_by: user.id,
+          })),
+        );
+      if (valuesError) {
+        await supabase.rpc("remove_attribute_type", {
+          target_attribute_type_id: attributeTypeId,
+        });
+        return {
+          code: mutationCode(valuesError.code),
+          error: valuesError.message,
+        };
+      }
+    }
+    if (!attributeTypeId) {
+      return { error: "Choose or create a reusable option." };
+    }
+
+    const [{ data: typeData, error: typeError }, { data: valueData, error: valueError }] =
+      await Promise.all([
+        supabase
+          .from("attribute_types")
+          .select("id,name")
+          .eq("id", attributeTypeId)
+          .single(),
+        supabase
+          .from("attribute_values")
+          .select("id,attribute_type_id,value,sort_order")
+          .eq("attribute_type_id", attributeTypeId)
+          .order("sort_order"),
+      ]);
+    const readError = typeError ?? valueError;
+    if (readError || !typeData) {
+      return {
+        code: mutationCode(readError?.code),
+        error: readError?.message ?? "The reusable option could not be loaded.",
+      };
+    }
+
+    return {
+      attributeTypes: [typeData as CatalogAttributeType],
+      attributeValues: (valueData ?? []) as CatalogAttributeValue[],
+      productOption: {
+        attribute_type_id: attributeTypeId,
+        is_required: formData.get("isRequired") === "on",
+        is_variant_axis: formData.get("isVariantAxis") === "on",
+        sort_order: sortOrder,
+      },
+    };
   }
 
   const { data: attributeTypeId, error } = await supabase.rpc(
