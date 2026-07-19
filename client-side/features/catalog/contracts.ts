@@ -46,6 +46,13 @@ export type CategoryAttributeConfiguration = Readonly<{
   required_from?: string | null;
 }>;
 
+export type ProductOptionConfiguration = Readonly<{
+  attribute_type_id: string;
+  is_required: boolean;
+  is_variant_axis: boolean;
+  sort_order: number;
+}>;
+
 export type CategoryOptionUsage = Readonly<{
   product_count: number;
   variant_count: number;

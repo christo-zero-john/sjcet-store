@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addProductOption,
   parseProductVariants,
+  removeProductOption,
+  selectedProductOptions,
   selectedProductValues,
 } from "./product-draft";
 
@@ -24,6 +27,102 @@ function multiColourForm(): FormData {
 }
 
 describe("e-commerce product drafts", () => {
+  it("adds one explicit option without selecting category suggestions", () => {
+    expect(
+      addProductOption([], {
+        attribute_type_id: "colour",
+        is_required: true,
+        is_variant_axis: true,
+        sort_order: 0,
+      }),
+    ).toEqual([
+      {
+        attribute_type_id: "colour",
+        is_required: true,
+        is_variant_axis: true,
+        sort_order: 0,
+      },
+    ]);
+  });
+
+  it("removes only the requested option from a product draft", () => {
+    expect(
+      removeProductOption(
+        [
+          {
+            attribute_type_id: "colour",
+            is_required: true,
+            is_variant_axis: true,
+            sort_order: 0,
+          },
+          {
+            attribute_type_id: "size",
+            is_required: false,
+            is_variant_axis: true,
+            sort_order: 1,
+          },
+        ],
+        "colour",
+      ),
+    ).toEqual([
+      {
+        attribute_type_id: "size",
+        is_required: false,
+        is_variant_axis: true,
+        sort_order: 1,
+      },
+    ]);
+  });
+
+  it("parses only explicitly selected product options", () => {
+    const form = multiColourForm();
+    form.set(
+      "selectedProductOptions",
+      JSON.stringify([
+        {
+          attribute_type_id: "colour",
+          is_required: true,
+          is_variant_axis: true,
+          sort_order: 0,
+        },
+      ]),
+    );
+
+    expect(selectedProductOptions(form)).toEqual([
+      {
+        attribute_type_id: "colour",
+        is_required: true,
+        is_variant_axis: true,
+        sort_order: 0,
+      },
+    ]);
+  });
+
+  it("rejects duplicate explicitly selected product options", () => {
+    const form = multiColourForm();
+    form.set(
+      "selectedProductOptions",
+      JSON.stringify([
+        {
+          attribute_type_id: "colour",
+          is_required: true,
+          is_variant_axis: true,
+          sort_order: 0,
+        },
+        {
+          attribute_type_id: "colour",
+          is_required: false,
+          is_variant_axis: true,
+          sort_order: 1,
+        },
+      ]),
+    );
+
+    expect(() => selectedProductOptions(form)).toThrow(
+      "Each product option can be selected only once.",
+    );
+  });
+
   it("parses independently stocked sellable variants", () => {
     expect(parseProductVariants(multiColourForm())).toEqual([
       {

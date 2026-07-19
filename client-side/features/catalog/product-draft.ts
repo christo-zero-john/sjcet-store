@@ -1,4 +1,5 @@
 import { rupeesToPaise } from "./catalog-input";
+import type { ProductOptionConfiguration } from "./contracts";
 import { normalizeSku } from "./sku";
 
 export type ProductVariantDraft = Readonly<{
@@ -10,6 +11,27 @@ export type ProductVariantDraft = Readonly<{
   lowStockThreshold: number;
   attributes: Readonly<Record<string, string>>;
 }>;
+
+export function addProductOption(
+  current: readonly ProductOptionConfiguration[],
+  option: ProductOptionConfiguration,
+): ProductOptionConfiguration[] {
+  return [
+    ...current.filter(
+      (item) => item.attribute_type_id !== option.attribute_type_id,
+    ),
+    option,
+  ].toSorted((left, right) => left.sort_order - right.sort_order);
+}
+
+export function removeProductOption(
+  current: readonly ProductOptionConfiguration[],
+  attributeTypeId: string,
+): ProductOptionConfiguration[] {
+  return current.filter(
+    (item) => item.attribute_type_id !== attributeTypeId,
+  );
+}
 
 type MutableVariantDraft = {
   clientKey: string;
@@ -53,6 +75,69 @@ export function selectedProductValues(
     }
   }
   return selected;
+}
+
+export function selectedProductOptions(
+  formData: FormData,
+): ProductOptionConfiguration[] {
+  const rawValue = formData.get("selectedProductOptions");
+  if (typeof rawValue !== "string" || !rawValue.trim()) return [];
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawValue);
+  } catch {
+    throw new Error("Selected product options are invalid.");
+  }
+  if (!Array.isArray(payload)) {
+    throw new Error("Selected product options are invalid.");
+  }
+
+  const options = payload.map((item, index) => {
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      typeof Reflect.get(item, "attribute_type_id") !== "string" ||
+      !Reflect.get(item, "attribute_type_id") ||
+      typeof Reflect.get(item, "is_required") !== "boolean" ||
+      typeof Reflect.get(item, "is_variant_axis") !== "boolean"
+    ) {
+      throw new Error("Selected product options are invalid.");
+    }
+    const sortOrder = Reflect.get(item, "sort_order");
+    if (
+      !Number.isSafeInteger(sortOrder) ||
+      (sortOrder as number) < 0
+    ) {
+      throw new Error("Selected product option order is invalid.");
+    }
+    return {
+      attribute_type_id: Reflect.get(item, "attribute_type_id") as string,
+      is_required: Reflect.get(item, "is_required") as boolean,
+      is_variant_axis: Reflect.get(item, "is_variant_axis") as boolean,
+      sort_order: sortOrder as number,
+      _index: index,
+    };
+  });
+
+  if (
+    new Set(options.map((option) => option.attribute_type_id)).size !==
+    options.length
+  ) {
+    throw new Error("Each product option can be selected only once.");
+  }
+
+  return options
+    .toSorted(
+      (left, right) =>
+        left.sort_order - right.sort_order || left._index - right._index,
+    )
+    .map((option) => ({
+      attribute_type_id: option.attribute_type_id,
+      is_required: option.is_required,
+      is_variant_axis: option.is_variant_axis,
+      sort_order: option.sort_order,
+    }));
 }
 
 export function parseProductVariants(formData: FormData): ProductVariantDraft[] {
