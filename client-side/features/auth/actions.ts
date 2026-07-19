@@ -7,26 +7,32 @@ import { hasSupabasePublicConfig } from "../../lib/supabase/config";
 import { isAllowedCollegeEmail } from "./college-email";
 import { getServerAuthorizedRoles } from "./configured-super-admin";
 import { destinationForRoles } from "./role-destination";
+import { safeAuthReturnPath } from "./return-path";
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
 }
 
-function authError(message: string): never {
-  redirect(`/auth?error=${encodeURIComponent(message)}`);
+function authError(message: string, next: string | null): never {
+  const query = new URLSearchParams({ error: message });
+  if (next) {
+    query.set("next", next);
+  }
+  redirect(`/auth?${query.toString()}`);
 }
 
 export async function signIn(formData: FormData) {
   const email = field(formData, "email");
   const password = field(formData, "password");
+  const next = safeAuthReturnPath(field(formData, "next"));
 
   if (!email || !password) {
-    authError("Enter your email address and password.");
+    authError("Enter your email address and password.", next);
   }
 
   if (!hasSupabasePublicConfig(process.env)) {
-    authError("Supabase is not configured for this environment.");
+    authError("Supabase is not configured for this environment.", next);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -36,7 +42,7 @@ export async function signIn(formData: FormData) {
   });
 
   if (error || !data.user) {
-    authError("The email address or password is incorrect.");
+    authError("The email address or password is incorrect.", next);
   }
 
   let roles;
@@ -45,10 +51,11 @@ export async function signIn(formData: FormData) {
   } catch {
     authError(
       "Role authorization failed. Apply the latest database migration.",
+      next,
     );
   }
 
-  redirect(destinationForRoles(roles));
+  redirect(next ?? destinationForRoles(roles));
 }
 
 export async function signUp(formData: FormData) {
@@ -59,15 +66,16 @@ export async function signUp(formData: FormData) {
   if (!isAllowedCollegeEmail(email)) {
     authError(
       "Use a college email with a subdomain before sjcetpalai.ac.in.",
+      null,
     );
   }
 
   if (password.length < 8) {
-    authError("Password must contain at least 8 characters.");
+    authError("Password must contain at least 8 characters.", null);
   }
 
   if (!hasSupabasePublicConfig(process.env)) {
-    authError("Supabase is not configured for this environment.");
+    authError("Supabase is not configured for this environment.", null);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -82,7 +90,7 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
-    authError(error.message);
+    authError(error.message, null);
   }
 
   redirect(

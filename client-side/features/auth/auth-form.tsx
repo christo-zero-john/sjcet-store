@@ -5,6 +5,7 @@ import { useState } from "react";
 type AuthFormProps = Readonly<{
   error?: string;
   message?: string;
+  next?: string;
   signInAction?: (formData: FormData) => void | Promise<void>;
   signUpAction?: (formData: FormData) => void | Promise<void>;
 }>;
@@ -12,6 +13,7 @@ type AuthFormProps = Readonly<{
 export function AuthForm({
   error,
   message,
+  next,
   signInAction,
   signUpAction,
 }: AuthFormProps) {
@@ -55,6 +57,7 @@ export function AuthForm({
       {message ? <p className="notice is-success">{message}</p> : null}
 
       <form action={isLogin ? signInAction : signUpAction} className="auth-form">
+        {next ? <input name="next" type="hidden" value={next} /> : null}
         {!isLogin ? (
           <label>
             Full name

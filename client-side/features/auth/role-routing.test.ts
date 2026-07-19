@@ -22,4 +22,15 @@ describe("authentication route composition", () => {
     const contents = source("../../app/page.tsx");
     expect(contents).toContain("requireRoleDestination");
   });
+
+  it("prefers a validated payment return path after login", () => {
+    const contents = source("./actions.ts");
+    expect(contents).toContain("safeAuthReturnPath");
+    expect(contents).toContain("redirect(next ?? destinationForRoles(roles))");
+  });
+
+  it("validates the return path before rendering the auth surface", () => {
+    const contents = source("../../app/auth/page.tsx");
+    expect(contents).toContain("safeAuthReturnPath");
+  });
 });

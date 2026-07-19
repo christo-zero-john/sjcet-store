@@ -1,12 +1,14 @@
 import { AuthForm } from "../../features/auth/auth-form";
 import { signIn, signUp } from "../../features/auth/actions";
+import { safeAuthReturnPath } from "../../features/auth/return-path";
 
 type AuthPageProps = Readonly<{
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{ error?: string; message?: string; next?: string }>;
 }>;
 
 export default async function AuthPage({ searchParams }: AuthPageProps) {
   const params = await searchParams;
+  const next = safeAuthReturnPath(params.next) ?? undefined;
 
   return (
     <main className="auth-page">
@@ -27,6 +29,7 @@ export default async function AuthPage({ searchParams }: AuthPageProps) {
       <AuthForm
         error={params.error}
         message={params.message}
+        next={next}
         signInAction={signIn}
         signUpAction={signUp}
       />

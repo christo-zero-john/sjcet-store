@@ -10,7 +10,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "yarn dev",
+    command: "pnpm dev",
     url: "http://localhost:3000/auth",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
