@@ -1,9 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const schemaUrl = new URL("../../docs/supabase/main_schema.sql", import.meta.url);
+const migrationsUrl = new URL("../../docs/supabase/migrations/", import.meta.url);
 const schemaPath = fileURLToPath(schemaUrl);
 const source = await readFile(schemaUrl, "utf8");
+const migrationEntries = await readdir(migrationsUrl, {
+  withFileTypes: true,
+});
 
 const requiredPatterns = new Map([
   ["transaction start", /\bbegin\s*;/i],
@@ -77,12 +81,18 @@ const requiredPatterns = new Map([
     /\bcreate function public\.add_category_parameter_inline\b/i,
   ],
   ["products", /\bcreate table public\.products\b/i],
+  ["product number", /\bproduct_number\s+bigint\s+generated\b/i],
+  ["product options", /\bcreate table public\.product_options\b/i],
   ["product brand", /\bbrand\s+text\b/i],
   ["product variants", /\bcreate table public\.product_variants\b/i],
   ["variant barcode", /\bbarcode\s+text\b/i],
   [
     "multi-variant product creation",
     /\bcreate function public\.create_product_with_variants\b/i,
+  ],
+  [
+    "explicit product option creation argument",
+    /\bselected_product_options\s+jsonb\b/i,
   ],
   ["product images", /\bcreate table public\.product_images\b/i],
   ["product image bucket", /'product-images'/i],
@@ -120,6 +130,15 @@ const forbiddenPatterns = new Map([
 ]);
 
 const errors = [];
+const grandfatheredMigrations = new Set([
+  "20260717223500_configured_super_admin.sql",
+  "20260717230000_authoritative_role_authorization.sql",
+  "20260718090000_product_first_inventory.sql",
+  "20260718100200_inline_product_options.sql",
+  "20260718113000_inline_catalog_editing.sql",
+]);
+const migrationFilenamePattern =
+  /^(\d{4})(\d{2})(\d{2})\d{6}_(\d{3})-(\d{2})-(\d{2})-(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.sql$/;
 
 function tableBody(tableName) {
   const match = source.match(
@@ -140,6 +159,91 @@ for (const [name, pattern] of requiredPatterns) {
 for (const [name, pattern] of forbiddenPatterns) {
   if (pattern.test(source)) {
     errors.push(`Canonical schema contains forbidden ${name}`);
+  }
+}
+
+const conventionMigrations = migrationEntries
+  .filter(
+    (entry) =>
+      entry.isFile() &&
+      entry.name.endsWith(".sql") &&
+      !grandfatheredMigrations.has(entry.name),
+  )
+  .map((entry) => entry.name)
+  .sort();
+
+const reconciliationFilename =
+  "20260719125603_006-19-07-2026-reconcile-product-options.sql";
+const reconciliationEntry = migrationEntries.find(
+  (entry) => entry.isFile() && entry.name === reconciliationFilename,
+);
+
+if (!reconciliationEntry) {
+  errors.push(`Missing reconciliation migration: ${reconciliationFilename}`);
+} else {
+  const reconciliationSource = await readFile(
+    new URL(reconciliationFilename, migrationsUrl),
+    "utf8",
+  );
+  const reconciliationRequirements = new Map([
+    ["transaction start", /^\s*begin\s*;/im],
+    ["transaction commit", /^\s*commit\s*;/im],
+    ["product number", /\bproduct_number\s+bigint\b/i],
+    [
+      "product options",
+      /\bcreate table if not exists public\.product_options\b/i,
+    ],
+    [
+      "product creation RPC",
+      /\bcreate or replace function public\.create_product_with_variants\b/i,
+    ],
+    [
+      "explicit product options RPC argument",
+      /\bselected_product_options\s+jsonb\b/i,
+    ],
+    ["product options RLS", /\balter table public\.product_options enable row level security\b/i],
+    ["schema reload", /\bnotify pgrst,\s*'reload schema'/i],
+  ]);
+
+  for (const [name, pattern] of reconciliationRequirements) {
+    if (!pattern.test(reconciliationSource)) {
+      errors.push(`Reconciliation migration is missing ${name}`);
+    }
+  }
+}
+
+for (const [index, filename] of conventionMigrations.entries()) {
+  const match = filename.match(migrationFilenamePattern);
+
+  if (!match) {
+    errors.push(
+      `Migration filename must follow ` +
+        `YYYYMMDDHHMMSS_<slno>-<dd>-<MM>-<yyyy>-<name>.sql: ${filename}`,
+    );
+    continue;
+  }
+
+  const [, timestampYear, timestampMonth, timestampDay, serial, day, month, year] =
+    match;
+  const expectedSerial = String(grandfatheredMigrations.size + index + 1).padStart(
+    3,
+    "0",
+  );
+
+  if (
+    timestampYear !== year ||
+    timestampMonth !== month ||
+    timestampDay !== day
+  ) {
+    errors.push(
+      `Migration display date must match its Supabase timestamp: ${filename}`,
+    );
+  }
+
+  if (serial !== expectedSerial) {
+    errors.push(
+      `Migration serial must be ${expectedSerial}, received ${serial}: ${filename}`,
+    );
   }
 }
 
