@@ -1824,6 +1824,9 @@ git commit -m "docs: document store manager checkout"
 
 ## Execution Handoff
 
+Use the ready-to-paste execution prompt at
+`docs/superpowers/prompts/2026-07-20-store-manager-order-basket-execution.md`.
+
 Implement tasks in dependency order. A task is complete only after its focused
 red/green evidence and listed verification pass. Mark each checkbox
 immediately after evidence is recorded; do not batch status updates at the end.
