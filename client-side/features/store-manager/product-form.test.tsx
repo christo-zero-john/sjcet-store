@@ -69,5 +69,8 @@ describe("product form", () => {
     expect(markup).toContain("Opening stock");
     expect(markup).toContain("+ Create parent category");
     expect(markup).toContain("+ Create subcategory");
+    expect(markup).toContain("Edit selected parent category");
+    expect(markup).toContain("Edit selected subcategory");
+    expect(markup).toContain('aria-label="Edit Colour"');
   });
 });

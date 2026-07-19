@@ -1026,6 +1026,16 @@ a {
   font-weight: 700;
 }
 
+.category-parameter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #dbe3dd;
+  border-radius: 0.7rem;
+  padding: 0.7rem 0.8rem;
+}
+
 .product-option-inline-form {
   display: grid;
   gap: 1rem;
@@ -1069,6 +1079,13 @@ a {
 }
 
 .product-option-list li {
+  display: contents;
+}
+
+.product-option-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   border: 1px solid #bfd3c4;
   border-radius: 999px;
   padding: 0.4rem 0.7rem;
@@ -1076,6 +1093,17 @@ a {
   color: #174c2b;
   font-size: 0.78rem;
   font-weight: 750;
+  cursor: pointer;
+}
+
+.product-option-chip span {
+  color: #54705d;
+  font-size: 0.68rem;
+}
+
+.category-edit-button {
+  justify-self: start;
+  margin-top: -0.55rem;
 }
 
 .empty-inline-state,

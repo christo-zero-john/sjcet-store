@@ -14,6 +14,7 @@ import {
 } from "../catalog/actions";
 import type {
   CatalogAttributeType,
+  CategoryAttributeConfiguration,
   ProductCategory,
 } from "../catalog/contracts";
 
@@ -33,6 +34,7 @@ type CreatedCategoryState = InlineCategoryState & {
 type CategoryInlinePanelProps = Readonly<{
   categories: readonly ProductCategory[];
   attributeTypes: readonly CatalogAttributeType[];
+  categoryAttributes?: readonly CategoryAttributeConfiguration[];
   intent?: "create" | "edit";
   category?: ProductCategory;
   mode: "parent" | "subcategory";
@@ -40,6 +42,10 @@ type CategoryInlinePanelProps = Readonly<{
   onClose: () => void;
   onCreated: (state: CreatedCategoryState) => void;
   onIntermediateCreated?: (state: CreatedCategoryState) => void;
+  onEditOption?: (
+    configuration: CategoryAttributeConfiguration,
+  ) => void;
+  onAddParameter?: (categoryId: string) => void;
 }>;
 
 const INITIAL_STATE: InlineCategoryState = {};
@@ -211,6 +217,7 @@ function ParameterEditor({
 export function CategoryInlinePanel({
   categories,
   attributeTypes,
+  categoryAttributes = [],
   intent = "create",
   category,
   mode,
@@ -218,6 +225,8 @@ export function CategoryInlinePanel({
   onClose,
   onCreated,
   onIntermediateCreated,
+  onEditOption,
+  onAddParameter,
 }: CategoryInlinePanelProps) {
   const editing = intent === "edit";
   const mainAction = editing ? updateCategoryInline : createCategoryInline;
@@ -434,10 +443,44 @@ export function CategoryInlinePanel({
                   <span>Category configuration</span>
                   <h3>Product parameters</h3>
                 </div>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    if (category?.id) onAddParameter?.(category.id);
+                  }}
+                  type="button"
+                >
+                  + Add parameter
+                </button>
               </div>
-              <p className="field-help">
-                Edit attached parameters from their product option controls.
-              </p>
+              {categoryAttributes
+                .filter(
+                  (configuration) =>
+                    configuration.category_id === category?.id,
+                )
+                .map((configuration) => {
+                  const name =
+                    attributeTypes.find(
+                      (type) =>
+                        type.id === configuration.attribute_type_id,
+                    )?.name ?? "Product parameter";
+                  return (
+                    <div
+                      className="category-parameter-row"
+                      key={configuration.attribute_type_id}
+                    >
+                      <span>{name}</span>
+                      <button
+                        aria-label={`Edit ${name}`}
+                        className="text-button"
+                        onClick={() => onEditOption?.(configuration)}
+                        type="button"
+                      >
+                        Edit {name}
+                      </button>
+                    </div>
+                  );
+                })}
             </section>
           ) : (
             <>

@@ -74,6 +74,41 @@ test.describe("product-first store manager", () => {
     );
   });
 
+  test("opens an attached option inline without losing the product draft", async ({
+    page,
+  }) => {
+    await page.goto("/store-manager/products/new");
+    await page.getByLabel("Product name").fill("Preserved option draft");
+    await page
+      .getByLabel("Description")
+      .fill("This draft must survive catalog maintenance.");
+
+    const editOptions = page.getByRole("button", {
+      name: /^Edit (?!selected)/,
+    });
+    test.skip(
+      (await editOptions.count()) === 0,
+      "The selected category has no configured product options.",
+    );
+
+    await editOptions.first().click();
+    await expect(
+      page.getByRole("heading", { name: "Edit product option" }),
+    ).toBeVisible();
+    await expect(page.getByText(/Used by \d+ categories\./)).toBeVisible();
+    await page
+      .getByRole("button", { name: "Close product option panel" })
+      .first()
+      .click();
+
+    await expect(page.getByLabel("Product name")).toHaveValue(
+      "Preserved option draft",
+    );
+    await expect(page.getByLabel("Description")).toHaveValue(
+      "This draft must survive catalog maintenance.",
+    );
+  });
+
   test("keeps add and reduce stock as distinct tasks", async ({ page }) => {
     await page.goto("/store-manager/inventory");
     const firstVariant = page.locator(".product-table-row").first();

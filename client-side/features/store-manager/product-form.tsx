@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 
 import type {
   InlineCategoryState,
   InlineProductOptionState,
 } from "../catalog/actions";
+import { loadProductOptionInlineEditor } from "../catalog/actions";
 import type {
+  CatalogOptionEditorResult,
   CategoryAttributeConfiguration,
   ProductCategory,
 } from "../catalog/contracts";
@@ -32,11 +39,28 @@ type ProductFormProps = Readonly<{
     id: string;
     name: string;
     parent_id?: string | null;
+    description?: string | null;
   }[];
   attributeTypes: readonly AttributeType[];
   attributeValues: readonly AttributeValue[];
   categoryAttributes: readonly CategoryAttributeConfiguration[];
 }>;
+
+type CategoryPanelTarget =
+  | { intent: "create"; mode: "parent" | "subcategory" }
+  | {
+      intent: "edit";
+      mode: "parent" | "subcategory";
+      categoryId: string;
+    };
+
+type OptionPanelTarget =
+  | { intent: "create"; categoryId: string }
+  | {
+      intent: "edit";
+      categoryId: string;
+      attributeTypeId: string;
+    };
 
 type CreatedCategoryResult = InlineCategoryState & {
   category: ProductCategory;
@@ -72,10 +96,16 @@ export function ProductForm({
     useState([...categoryAttributes]);
   const [parentId, setParentId] = useState(initialParent);
   const [subcategoryId, setSubcategoryId] = useState(initialSubcategory);
-  const [categoryPanelMode, setCategoryPanelMode] = useState<
-    "parent" | "subcategory" | null
-  >(null);
-  const [optionPanelOpen, setOptionPanelOpen] = useState(false);
+  const [categoryPanelTarget, setCategoryPanelTarget] =
+    useState<CategoryPanelTarget | null>(null);
+  const [optionPanelTarget, setOptionPanelTarget] =
+    useState<OptionPanelTarget | null>(null);
+  const [optionEditor, setOptionEditor] =
+    useState<CatalogOptionEditorResult | null>(null);
+  const [optionLoadError, setOptionLoadError] = useState("");
+  const [failedOptionConfiguration, setFailedOptionConfiguration] =
+    useState<CategoryAttributeConfiguration | null>(null);
+  const [optionLoading, startOptionTransition] = useTransition();
   const [productName, setProductName] = useState("");
 
   const rootCategories = availableCategories.filter(
@@ -113,9 +143,12 @@ export function ProductForm({
   const mergeCreatedCategory = useCallback(
     (result: CreatedCategoryResult) => {
       setAvailableCategories((current) =>
-        current.some((category) => category.id === result.category.id)
-          ? current
-          : [...current, result.category],
+        [
+          ...current.filter(
+            (category) => category.id !== result.category.id,
+          ),
+          result.category,
+        ],
       );
       setAvailableAttributeTypes((current) => [
         ...current,
@@ -166,7 +199,7 @@ export function ProductForm({
         setParentId(result.category.id);
         setSubcategoryId("");
       }
-      setCategoryPanelMode(null);
+      setCategoryPanelTarget(null);
     },
     [mergeCreatedCategory],
   );
@@ -174,30 +207,84 @@ export function ProductForm({
   const handleCreatedOption = useCallback(
     (result: InlineProductOptionState) => {
       setAvailableAttributeTypes((current) => [
-        ...current,
+        ...current.filter(
+          (item) =>
+            !(result.attributeTypes ?? []).some(
+              (type) => type.id === item.id,
+            ),
+        ),
         ...(result.attributeTypes ?? []).filter(
-          (type) => !current.some((item) => item.id === type.id),
+          (type) => Boolean(type.id),
         ),
       ]);
       setAvailableAttributeValues((current) => [
-        ...current,
-        ...(result.attributeValues ?? []).filter(
-          (value) => !current.some((item) => item.id === value.id),
+        ...current.filter(
+          (item) =>
+            !(result.attributeTypes ?? []).some(
+              (type) => type.id === item.attribute_type_id,
+            ),
         ),
+        ...(result.attributeValues ?? []),
       ]);
       setAvailableCategoryAttributes((current) => [
-        ...current,
-        ...(result.categoryAttributes ?? []).filter(
-          (configuration) =>
-            !current.some(
-              (item) =>
+        ...current.filter(
+          (item) =>
+            !(result.categoryAttributes ?? []).some(
+              (configuration) =>
                 item.category_id === configuration.category_id &&
                 item.attribute_type_id ===
                   configuration.attribute_type_id,
             ),
         ),
+        ...(result.categoryAttributes ?? []),
       ]);
-      setOptionPanelOpen(false);
+      setOptionEditor(null);
+      setOptionPanelTarget(null);
+    },
+    [],
+  );
+
+  const handleDetachedOption = useCallback(
+    (result: InlineProductOptionState) => {
+      setAvailableCategoryAttributes((current) =>
+        current.filter(
+          (item) =>
+            !(
+              item.category_id === result.detachedCategoryId &&
+              item.attribute_type_id ===
+                result.detachedAttributeTypeId
+            ),
+        ),
+      );
+      setOptionEditor(null);
+      setOptionPanelTarget(null);
+    },
+    [],
+  );
+
+  const openOptionEditor = useCallback(
+    (configuration: CategoryAttributeConfiguration) => {
+      setOptionLoadError("");
+      setFailedOptionConfiguration(null);
+      startOptionTransition(async () => {
+        const result = await loadProductOptionInlineEditor(
+          configuration.category_id,
+          configuration.attribute_type_id,
+        );
+        if (!result.editor) {
+          setOptionLoadError(
+            result.error ?? "The product option could not be loaded.",
+          );
+          setFailedOptionConfiguration(configuration);
+          return;
+        }
+        setOptionEditor(result.editor);
+        setOptionPanelTarget({
+          intent: "edit",
+          categoryId: configuration.category_id,
+          attributeTypeId: configuration.attribute_type_id,
+        });
+      });
     },
     [],
   );
@@ -232,7 +319,10 @@ export function ProductForm({
               <select
                 onChange={(event) => {
                   if (event.target.value === "__new_parent__") {
-                    setCategoryPanelMode("parent");
+                    setCategoryPanelTarget({
+                      intent: "create",
+                      mode: "parent",
+                    });
                     return;
                   }
                   const nextParent = event.target.value;
@@ -257,13 +347,31 @@ export function ProductForm({
                 </option>
               </select>
             </label>
+            <button
+              aria-label="Edit selected parent category"
+              className="text-button category-edit-button"
+              disabled={!parentId}
+              onClick={() => {
+                setCategoryPanelTarget({
+                  intent: "edit",
+                  mode: "parent",
+                  categoryId: parentId,
+                });
+              }}
+              type="button"
+            >
+              Edit selected parent category
+            </button>
             <label>
               Subcategory
               <select
                 disabled={!parentId}
                 onChange={(event) => {
                   if (event.target.value === "__new_subcategory__") {
-                    setCategoryPanelMode("subcategory");
+                    setCategoryPanelTarget({
+                      intent: "create",
+                      mode: "subcategory",
+                    });
                     return;
                   }
                   setSubcategoryId(event.target.value);
@@ -281,6 +389,21 @@ export function ProductForm({
                 </option>
               </select>
             </label>
+            <button
+              aria-label="Edit selected subcategory"
+              className="text-button category-edit-button"
+              disabled={!subcategoryId}
+              onClick={() => {
+                setCategoryPanelTarget({
+                  intent: "edit",
+                  mode: "subcategory",
+                  categoryId: subcategoryId,
+                });
+              }}
+              type="button"
+            >
+              Edit selected subcategory
+            </button>
             <input name="categoryId" type="hidden" value={finalCategoryId} />
             <label className="wide-field">
               Description
@@ -352,7 +475,13 @@ export function ProductForm({
             <button
               className="secondary-button"
               disabled={!finalCategoryId}
-              onClick={() => setOptionPanelOpen(true)}
+              onClick={() => {
+                setOptionEditor(null);
+                setOptionPanelTarget({
+                  intent: "create",
+                  categoryId: finalCategoryId,
+                });
+              }}
               type="button"
             >
               + Add product option
@@ -362,10 +491,24 @@ export function ProductForm({
             <ul className="product-option-list">
               {variantAttributes.map((configuration) => (
                 <li key={configuration.attribute_type_id}>
-                  {availableAttributeTypes.find(
-                    (type) =>
-                      type.id === configuration.attribute_type_id,
-                  )?.name ?? "Product option"}
+                  <button
+                    aria-label={`Edit ${
+                      availableAttributeTypes.find(
+                        (type) =>
+                          type.id === configuration.attribute_type_id,
+                      )?.name ?? "product option"
+                    }`}
+                    className="product-option-chip"
+                    disabled={optionLoading}
+                    onClick={() => openOptionEditor(configuration)}
+                    type="button"
+                  >
+                    {availableAttributeTypes.find(
+                      (type) =>
+                        type.id === configuration.attribute_type_id,
+                    )?.name ?? "Product option"}
+                    <span aria-hidden="true">Edit</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -375,6 +518,23 @@ export function ProductForm({
               colours.
             </p>
           )}
+          {optionLoadError ? (
+            <div aria-live="polite" className="notice is-error">
+              <p>{optionLoadError}</p>
+              {failedOptionConfiguration ? (
+                <button
+                  className="text-button"
+                  disabled={optionLoading}
+                  onClick={() =>
+                    openOptionEditor(failedOptionConfiguration)
+                  }
+                  type="button"
+                >
+                  Retry loading option
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <ProductVariantRows
@@ -398,21 +558,41 @@ export function ProductForm({
         </div>
       </form>
 
-      {categoryPanelMode ? (
+      {categoryPanelTarget ? (
         <CategoryInlinePanel
           attributeTypes={availableAttributeTypes}
           categories={availableCategories}
+          categoryAttributes={availableCategoryAttributes}
+          category={availableCategories.find(
+            (category) =>
+              categoryPanelTarget.intent === "edit" &&
+              category.id === categoryPanelTarget.categoryId,
+          )}
           initialParentId={parentId}
-          mode={categoryPanelMode}
-          onClose={() => setCategoryPanelMode(null)}
+          intent={categoryPanelTarget.intent}
+          mode={categoryPanelTarget.mode}
+          onClose={() => setCategoryPanelTarget(null)}
           onCreated={handleCreatedCategory}
           onIntermediateCreated={handleIntermediateParent}
+          onAddParameter={(categoryId) => {
+            setCategoryPanelTarget(null);
+            setOptionEditor(null);
+            setOptionPanelTarget({ intent: "create", categoryId });
+          }}
+          onEditOption={(configuration) => {
+            setCategoryPanelTarget(null);
+            openOptionEditor(configuration);
+          }}
         />
       ) : null}
-      {optionPanelOpen && finalCategoryId ? (
+      {optionPanelTarget ? (
         <ProductOptionInlinePanel
+          attributeType={optionEditor?.attributeType}
           attributeTypes={availableAttributeTypes}
-          categoryId={finalCategoryId}
+          attributeValues={optionEditor?.attributeValues}
+          categoryAttribute={optionEditor?.categoryAttribute}
+          categoryCount={optionEditor?.categoryCount}
+          categoryId={optionPanelTarget.categoryId}
           configuredAttributeTypeIds={configuredAttributes.map(
             (configuration) => configuration.attribute_type_id,
           )}
@@ -423,8 +603,15 @@ export function ProductForm({
               ),
             ),
           ]}
-          onClose={() => setOptionPanelOpen(false)}
+          intent={optionPanelTarget.intent}
+          onClose={() => {
+            setOptionPanelTarget(null);
+            setOptionEditor(null);
+          }}
           onCreated={handleCreatedOption}
+          onDetached={handleDetachedOption}
+          usage={optionEditor?.usage}
+          valueUsage={optionEditor?.valueUsage}
         />
       ) : null}
     </>

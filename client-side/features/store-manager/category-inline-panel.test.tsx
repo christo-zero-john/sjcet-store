@@ -27,7 +27,16 @@ describe("inline category hierarchy", () => {
   it("reuses the category drawer with prefilled edit fields", () => {
     const markup = renderToStaticMarkup(
       <CategoryInlinePanel
-        attributeTypes={[]}
+        attributeTypes={[{ id: "colour", name: "Colour" }]}
+        categoryAttributes={[
+          {
+            category_id: "stationery",
+            attribute_type_id: "colour",
+            is_required: true,
+            is_variant_axis: true,
+            sort_order: 0,
+          },
+        ]}
         categories={[
           {
             id: "stationery",
@@ -46,6 +55,7 @@ describe("inline category hierarchy", () => {
         mode="parent"
         onClose={() => undefined}
         onCreated={() => undefined}
+        onEditOption={() => undefined}
       />,
     );
 
@@ -53,6 +63,9 @@ describe("inline category hierarchy", () => {
     expect(markup).toContain('value="Stationery"');
     expect(markup).toContain("College supplies");
     expect(markup).toContain("Save changes");
+    expect(markup).toContain("Colour");
+    expect(markup).toContain("Edit Colour");
+    expect(markup).toContain("+ Add parameter");
     expect(markup).not.toContain("Save and select parent category");
   });
 });

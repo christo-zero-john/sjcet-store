@@ -15,7 +15,7 @@ export default async function NewProductPage({
     await Promise.all([
       supabase
         .from("product_categories")
-        .select("id,name,parent_id")
+        .select("id,name,parent_id,description")
         .eq("is_active", true)
         .order("sort_order")
         .order("name"),
@@ -25,12 +25,12 @@ export default async function NewProductPage({
         .order("name"),
       supabase
         .from("attribute_values")
-        .select("id,attribute_type_id,value")
+        .select("id,attribute_type_id,value,sort_order")
         .order("sort_order"),
       supabase
         .from("category_attributes")
         .select(
-          "category_id,attribute_type_id,is_required,is_variant_axis",
+          "category_id,attribute_type_id,is_required,is_variant_axis,sort_order,required_from",
         )
         .order("sort_order"),
     ]);
