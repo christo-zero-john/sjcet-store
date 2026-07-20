@@ -8,6 +8,10 @@
 
 **Tech Stack:** Next.js 16.2.10, React 19.2.7, TypeScript 5.9.3, Supabase Postgres/Storage, Vitest 4.1.10, Playwright 1.61.1, and pnpm.
 
+**Current media rule:** The 2026-07-20 variant-first decision supersedes every
+product-primary-image reference in this historical plan. Current creation
+accepts images only from variant rows and does not create a product gallery.
+
 ## Global Constraints
 
 - Follow the approved product-first design and UI acceptance authority.
@@ -193,7 +197,10 @@ Run focused tests and confirm the old single-variant RPC causes failure.
 
 - [ ] **Step 3: Implement submission and detail rendering**
 
-Call the transactional RPC once. Upload the product primary image and each provided variant image after database creation, using returned row-key mappings. On upload failure, preserve the created catalog records and redirect to product details with a precise recoverable message.
+Call the transactional RPC once. Upload each provided variant image after
+database creation by using returned row-key mappings. On upload failure,
+preserve the created catalog records and redirect to product details with a
+precise recoverable message.
 
 - [ ] **Step 4: Verify green and review**
 

@@ -8,6 +8,16 @@
 
 **Tech Stack:** Next.js 16.2.10, React 19.2.7, TypeScript 5.9.3, Supabase Postgres, Supabase Storage, Zod 4.3.6, Vitest 4.1.10, Playwright 1.61.1, and pnpm.
 
+## Superseding product-detail decision
+
+The product-primary/gallery portions of this historical implementation plan
+were superseded on 2026-07-20 by
+`docs/superpowers/plans/2026-07-20-variant-first-product-details.md`.
+Current manager workflows use one optional image per variant, one card per
+variant, **Add variant**, and then **Edit product**. Product-level image rows are
+legacy data: preserve them, but do not expose creation or gallery controls.
+All non-media catalog and inventory tasks in this plan remain applicable.
+
 ## Global constraints
 
 - Read `AGENTS.md`, `docs/architecture/project-foundation.md`, `docs/requirements/store_manager.md`, `docs/team/development-guide.md`, `docs/superpowers/specs/2026-07-18-product-first-inventory-management-design.md`, and this plan before each task.
@@ -54,7 +64,7 @@
 | `client-side/features/store-manager/product-form.tsx` | Focused product entry and disclosure |
 | `client-side/features/store-manager/category-inline-panel.tsx` | Inline category and parameter creation |
 | `client-side/features/store-manager/grouped-variant-editor.tsx` | Explicit variant rows and bulk edits |
-| `client-side/features/store-manager/product-media-editor.tsx` | Product gallery and variant images |
+| `client-side/features/store-manager/product-variant-card.tsx` | Variant summary, image, and local editor |
 | `client-side/features/store-manager/variant-context.tsx` | Selected variant and sibling navigation |
 | `client-side/features/store-manager/add-stock-panel.tsx` | Synchronized increase-only controls |
 | `client-side/features/store-manager/stock-reduction-panel.tsx` | Confirmed reduction workflow |
@@ -238,7 +248,10 @@ git commit -m "feat: enforce reference-safe catalog options"
 
 - [ ] **Step 1: Write failing media database tests**
 
-Create tests for one product primary image, multiple gallery images, one image per variant, same-product variant ownership, student write denial, manager write access, and product deletion behavior.
+Create tests for one image per variant, same-product variant ownership, student
+write denial, manager write access, and product deletion behavior. Keep legacy
+product-image constraints covered for data compatibility, without exposing
+gallery controls in the manager UI.
 
 Use assertions shaped like:
 
@@ -779,10 +792,10 @@ Cover:
 - future variant requires the option
 - selected sibling uses `aria-current="true"`
 - sibling link switches to its inventory detail route
-- primary image and additional gallery images render
-- variant image overrides product image
-- missing variant image falls back to primary
-- missing all images uses the catalog placeholder
+- each variant card renders its own image
+- replacing one variant image does not affect a sibling
+- a missing variant image uses the no-image placeholder
+- no product gallery or primary-image control renders
 
 - [ ] **Step 2: Run focused tests and verify failures**
 
@@ -833,7 +846,11 @@ For removal, delete metadata in a controlled server operation, then delete the o
 
 - [ ] **Step 5: Implement product and variant detail layouts**
 
-Product detail shows shared data, gallery, grouped variants, lifecycle actions, and stock history. Inventory variant detail shows parent product/category, selected variant, stock actions, history, and a sibling sidebar.
+Product detail shows shared data, one card per variant, card-local image and
+edit controls, **Add variant**, **Edit product**, grouped tools, lifecycle
+actions, and stock history. Inventory variant detail shows parent
+product/category, selected variant, stock actions, history, and a sibling
+sidebar.
 
 Use `Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" })` for movement times.
 
@@ -1039,7 +1056,8 @@ git commit -m "test: verify product-first inventory management"
 - Every `SM-UX-001` through `SM-UX-026` scenario maps to Tasks 5 through 9.
 - Tasks 1 through 3 define every new database function consumed by later tasks.
 - Task 4 defines every shared TypeScript contract consumed by user interface tasks.
-- Product media ownership includes product primary, product gallery, variant override, and fallback behavior.
+- Current manager media ownership is one optional image per variant. Legacy
+  product-level rows remain stored but are not displayed or edited.
 - Products without options use one internal default variant without exposing variant terminology.
 - Managers create variants explicitly; no task generates option combinations.
 - Required options use `required_from` to preserve existing null values and validate future variants.

@@ -62,11 +62,11 @@ The initial page emphasizes:
 - parent category
 - subcategory
 - description
-- primary image
 - category-defined product specifications
 - sellable variants
 
-Additional images stay out of the initial path. The manager reveals them only when needed.
+Each sellable variant row contains its own optional image. The form has no
+product-level primary image or gallery.
 
 The category chooser uses separate **Parent Category** and **Subcategory**
 dropdowns. Each dropdown ends with an appropriate create action and provides an
@@ -203,11 +203,17 @@ Each sibling entry shows option values, SKU, stock count, and state. The selecte
 
 ## Product and variant images
 
-A product can have one optional primary image and additional gallery images. The manager can reorder gallery images and choose the primary image.
+A variant can have one optional image. Product details render that image inside
+the matching variant card. A variant without an image uses the shared no-image
+placeholder.
 
-A variant can have one optional image. Variant-specific surfaces use that image when present. Otherwise, they use the product primary image. A product or variant without an image uses the shared catalog placeholder.
+The manager workflow does not create or manage product-level primary or gallery
+images. Existing product-level image rows are preserved as legacy data and
+ignored by this interface.
 
-Supabase Storage uses a `product-images` bucket. Public catalog reads can access stored product images. Only authorized store managers and super admins can upload, replace, reorder, or remove them through server operations.
+Supabase Storage uses a `product-images` bucket. Public catalog reads can access
+stored variant images. Only authorized store managers and super admins can
+upload, replace, or remove them through server operations.
 
 The first implementation accepts JPEG, PNG, and WebP files up to 5 MB each. Server validation checks the file type and size before upload. Image database rows store the product, optional variant, object path, alternative text, display order, and primary state.
 
@@ -270,20 +276,23 @@ The implementation keeps the current normalized catalog tables and adds the foll
 
 ### Product images
 
-`product_images` stores product gallery and variant image records:
+`product_images` retains its backwards-compatible product/variant shape, while
+current manager writes always set `variant_id`:
 
 | Column | Rule |
 |---|---|
 | `id` | UUID primary key |
 | `product_id` | Required product reference |
-| `variant_id` | Optional variant reference that must belong to the same product |
+| `variant_id` | Required by current manager workflows and must belong to the same product; nullable only for preserved legacy rows |
 | `storage_path` | Required unique object path |
 | `alt_text` | Optional accessible description |
-| `sort_order` | Non-negative integer |
-| `is_primary` | Allowed only for product-level images |
+| `sort_order` | Legacy-compatible non-negative integer; not exposed in the current manager UI |
+| `is_primary` | Legacy product-level field; always false for current variant image writes |
 | audit timestamps and actor | Required |
 
-A partial unique index allows one primary product image. Another partial unique index allows one image per variant.
+The unique variant-image index enforces one image per variant. Legacy
+product-primary constraints remain in the schema only to preserve existing
+rows.
 
 ### Effective required options
 
@@ -402,7 +411,8 @@ Implementation is complete when:
    edited through the same product workflow;
 9. reusable parameter edits clearly apply globally;
 10. referenced parameters, values, and category attachments cannot be removed;
-11. images follow product-gallery and optional variant-image ownership;
+11. each variant owns at most one optional image and the manager UI has no
+    product gallery;
 12. SKU generation remains optional and editable;
 13. stock additions cannot reduce stock;
 14. stock reductions use a separate confirmed operation;
