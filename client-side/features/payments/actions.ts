@@ -8,9 +8,86 @@ import type {
   PaymentMethod,
 } from "../orders/contracts";
 import { ProviderCheckoutError, type PaymentProvider } from "./contracts";
-import { buildHandoffUrl, type HandoffToken } from "./handoff";
+import { buildHandoffUrl, hashHandoffToken, type HandoffToken } from "./handoff";
 
 const MODULE_METADATA = "store_counter_sale";
+
+export type ClaimantLine = Readonly<{
+  productName: string;
+  variantDescription: string;
+  sku: string;
+  quantity: number;
+  unitPricePaise: number;
+  lineTotalPaise: number;
+}>;
+
+export type ClaimantOrderView = Readonly<{
+  orderNumber: number;
+  status: string;
+  currency: string;
+  totalPaise: number;
+  paymentState: string;
+  lines: readonly ClaimantLine[];
+}>;
+
+export type PaymentReturnStatus = Readonly<{
+  paymentState: string;
+  orderStatus: string;
+  orderNumber: number;
+}>;
+
+async function authenticatedRpc() {
+  const { requireAuthenticatedUser } = await import("../auth/authorization");
+  const { supabase } = await requireAuthenticatedUser();
+  return async (fn: string, args: Record<string, unknown>) => {
+    const { data, error } = await supabase.rpc(fn, args);
+    return {
+      data,
+      error: error ? { code: error.code, message: error.message } : null,
+    };
+  };
+}
+
+/**
+ * Claims (or reopens) a handoff for the authenticated user and returns the
+ * frozen, id-free claimant projection.
+ */
+export async function claimPaymentHandoff(
+  rawToken: string,
+): Promise<OrderResult<ClaimantOrderView>> {
+  const rpc = await authenticatedRpc();
+  const { data, error } = await rpc("claim_payment_handoff", {
+    handoff_token_sha256: hashHandoffToken(rawToken),
+  });
+  if (error) return mapDatabaseError(error);
+  return { ok: true, data: data as ClaimantOrderView };
+}
+
+export async function getPaymentReturnStatus(
+  attemptId: string,
+): Promise<OrderResult<PaymentReturnStatus>> {
+  const rpc = await authenticatedRpc();
+  const { data, error } = await rpc("get_payment_return_status", {
+    target_attempt_id: attemptId,
+  });
+  if (error) return mapDatabaseError(error);
+  return { ok: true, data: data as PaymentReturnStatus };
+}
+
+/**
+ * Resolves the server-stored checkout URL for the claimant. The browser never
+ * supplies a provider URL; it is read only here, immediately before redirect.
+ */
+export async function getPaymentRedirectUrl(
+  rawToken: string,
+): Promise<OrderResult<{ checkoutUrl: string }>> {
+  const rpc = await authenticatedRpc();
+  const { data, error } = await rpc("get_payment_redirect", {
+    handoff_token_sha256: hashHandoffToken(rawToken),
+  });
+  if (error) return mapDatabaseError(error);
+  return { ok: true, data: data as { checkoutUrl: string } };
+}
 
 export type OnlineCheckoutDeps = Readonly<{
   rpc: OrderRpc;

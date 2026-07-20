@@ -771,10 +771,14 @@ begin
       message = 'UNAUTHORIZED: Store-manager access is required.';
   end if;
 
-  select id, status, provider_checkout_id
+  select
+    payment_attempts.id,
+    payment_attempts.status,
+    payment_attempts.provider_checkout_id
   into current_attempt
   from public.payment_attempts
-  where id = target_attempt_id and order_id = target_order_id
+  where payment_attempts.id = target_attempt_id
+    and payment_attempts.order_id = target_order_id
   for update;
 
   if not found then
@@ -796,13 +800,13 @@ begin
   end if;
 
   update public.payment_attempts
-  set provider = provider_name,
-      provider_checkout_id = provider_checkout_id,
-      checkout_url = provider_checkout_url,
-      provider_checkout_expires_at = checkout_expires_at,
+  set provider = attach_provider_checkout.provider_name,
+      provider_checkout_id = attach_provider_checkout.provider_checkout_id,
+      checkout_url = attach_provider_checkout.provider_checkout_url,
+      provider_checkout_expires_at = attach_provider_checkout.checkout_expires_at,
       reconciliation_code = null,
       reconciliation_message = null
-  where id = target_attempt_id;
+  where id = attach_provider_checkout.target_attempt_id;
 
   insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
   values (actor, 'payment.checkout_attached', 'payment_attempt', target_attempt_id,
@@ -1188,5 +1192,240 @@ revoke execute on function public.restart_online_payment(
 ) from public, anon;
 revoke execute on function public.rotate_payment_handoff(uuid, text)
   from public, anon;
+
+-- Task 8: authenticated QR claim, handoff read, redirect, and return status.
+create function private.claimant_order_view(target_order_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'orderNumber', o.order_number,
+    'status', o.status,
+    'currency', o.currency,
+    'totalPaise', o.total_paise,
+    'paymentState', (
+      select pa.status
+      from public.payment_attempts pa
+      where pa.order_id = o.id and pa.method = 'online'
+      order by pa.created_at desc
+      limit 1
+    ),
+    'lines', (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'productName', l.product_name,
+            'variantDescription', l.variant_description,
+            'sku', l.product_sku,
+            'quantity', l.quantity,
+            'unitPricePaise', l.unit_price_paise,
+            'lineTotalPaise', l.line_total_paise
+          )
+          order by l.product_name, l.id
+        ),
+        '[]'::jsonb
+      )
+      from public.order_lines l
+      where l.order_id = o.id
+    )
+  )
+  from public.orders o
+  where o.id = target_order_id;
+$$;
+
+create function public.claim_payment_handoff(handoff_token_sha256 text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  handoff record;
+begin
+  if actor is null then
+    raise exception using errcode = '42501',
+      message = 'UNAUTHORIZED: Sign in to view this payment.';
+  end if;
+
+  if handoff_token_sha256 !~ '^[a-f0-9]{64}$' then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment link is not available.';
+  end if;
+
+  select ph.order_id, ph.claimed_by, ph.expires_at, ph.revoked_at
+  into handoff
+  from private.payment_handoffs ph
+  where ph.token_sha256 = handoff_token_sha256
+  for update;
+
+  if not found
+    or handoff.revoked_at is not null
+    or handoff.expires_at <= now() then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment link is not available.';
+  end if;
+
+  if handoff.claimed_by is null then
+    update private.payment_handoffs
+    set claimed_by = actor, claimed_at = now()
+    where token_sha256 = handoff_token_sha256;
+
+    update public.orders
+    set student_id = actor
+    where id = handoff.order_id;
+
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (actor, 'payment.handoff_claimed', 'order', handoff.order_id, '{}'::jsonb);
+  elsif handoff.claimed_by <> actor then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment link is not available.';
+  end if;
+
+  return private.claimant_order_view(handoff.order_id);
+end;
+$$;
+
+create function public.get_payment_handoff(handoff_token_sha256 text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  handoff record;
+begin
+  if actor is null then
+    raise exception using errcode = '42501',
+      message = 'UNAUTHORIZED: Sign in to view this payment.';
+  end if;
+
+  select ph.order_id, ph.claimed_by, ph.expires_at, ph.revoked_at
+  into handoff
+  from private.payment_handoffs ph
+  where ph.token_sha256 = handoff_token_sha256;
+
+  if not found
+    or handoff.revoked_at is not null
+    or handoff.expires_at <= now()
+    or handoff.claimed_by is distinct from actor then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment link is not available.';
+  end if;
+
+  return private.claimant_order_view(handoff.order_id);
+end;
+$$;
+
+create function public.get_payment_redirect(handoff_token_sha256 text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  handoff record;
+  attempt record;
+begin
+  if actor is null then
+    raise exception using errcode = '42501',
+      message = 'UNAUTHORIZED: Sign in to continue to payment.';
+  end if;
+
+  select ph.order_id, ph.claimed_by, ph.expires_at, ph.revoked_at
+  into handoff
+  from private.payment_handoffs ph
+  where ph.token_sha256 = handoff_token_sha256;
+
+  if not found
+    or handoff.revoked_at is not null
+    or handoff.expires_at <= now()
+    or handoff.claimed_by is distinct from actor then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment link is not available.';
+  end if;
+
+  if not exists (
+    select 1 from public.orders
+    where id = handoff.order_id and status = 'awaiting_payment'
+  ) then
+    raise exception using errcode = '22023',
+      message = 'ORDER_NOT_PAYABLE: This order can no longer be paid.';
+  end if;
+
+  select pa.checkout_url, pa.provider_checkout_expires_at
+  into attempt
+  from public.payment_attempts pa
+  where pa.order_id = handoff.order_id
+    and pa.method = 'online'
+    and pa.status = 'pending'
+    and pa.provider_checkout_id is not null
+    and pa.checkout_url is not null
+  order by pa.created_at desc
+  limit 1;
+
+  if not found
+    or (attempt.provider_checkout_expires_at is not null
+        and attempt.provider_checkout_expires_at <= now()) then
+    raise exception using errcode = '22023',
+      message = 'ORDER_NOT_PAYABLE: A payment link is not ready yet.';
+  end if;
+
+  return jsonb_build_object('checkoutUrl', attempt.checkout_url);
+end;
+$$;
+
+create function public.get_payment_return_status(target_attempt_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  actor uuid := (select auth.uid());
+  result record;
+begin
+  if actor is null then
+    raise exception using errcode = '42501',
+      message = 'UNAUTHORIZED: Sign in to view this payment.';
+  end if;
+
+  select pa.status as payment_state, o.status as order_status, o.order_number
+  into result
+  from public.payment_attempts pa
+  join public.orders o on o.id = pa.order_id
+  join private.payment_handoffs ph on ph.order_id = o.id
+  where pa.id = target_attempt_id
+    and ph.claimed_by = actor;
+
+  if not found then
+    raise exception using errcode = 'P0002',
+      message = 'HANDOFF_INVALID: This payment is not available.';
+  end if;
+
+  return jsonb_build_object(
+    'paymentState', result.payment_state,
+    'orderStatus', result.order_status,
+    'orderNumber', result.order_number
+  );
+end;
+$$;
+
+revoke execute on function public.claim_payment_handoff(text) from public, anon;
+revoke execute on function public.get_payment_handoff(text) from public, anon;
+revoke execute on function public.get_payment_redirect(text) from public, anon;
+revoke execute on function public.get_payment_return_status(uuid) from public, anon;
+grant execute on function public.claim_payment_handoff(text) to authenticated, service_role;
+grant execute on function public.get_payment_handoff(text) to authenticated, service_role;
+grant execute on function public.get_payment_redirect(text) to authenticated, service_role;
+grant execute on function public.get_payment_return_status(uuid) to authenticated, service_role;
 
 commit;

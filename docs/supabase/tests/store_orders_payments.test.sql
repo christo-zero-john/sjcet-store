@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(47);
+select plan(58);
 
 -- ---------------------------------------------------------------------------
 -- Schema surface: reservation and handoff records.
@@ -98,7 +98,8 @@ select ok(
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at, aud, role)
 values
   ('00000000-0000-0000-0000-0000000000a1', 'mgr@cs.sjcetpalai.ac.in', now(), now(), now(), 'authenticated', 'authenticated'),
-  ('00000000-0000-0000-0000-0000000000a2', 'stu@cs.sjcetpalai.ac.in', now(), now(), now(), 'authenticated', 'authenticated');
+  ('00000000-0000-0000-0000-0000000000a2', 'stu@cs.sjcetpalai.ac.in', now(), now(), now(), 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-0000000000a3', 'buyer@cs.sjcetpalai.ac.in', now(), now(), now(), 'authenticated', 'authenticated');
 insert into private.user_roles (user_id, role)
 values ('00000000-0000-0000-0000-0000000000a1', 'store_manager');
 insert into public.product_categories (id, slug, name)
@@ -279,6 +280,88 @@ select is(
   (select status::text from public.orders where idempotency_key = '00000000-0000-0000-0000-000000000f01'),
   'cancelled',
   'a cancelled order is terminal'
+);
+
+-- ---------------------------------------------------------------------------
+-- Task 8: authenticated QR claim, read-only handoff, redirect, return status.
+-- ---------------------------------------------------------------------------
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+create temp table t_handoff(order_id uuid, attempt_id uuid);
+insert into t_handoff
+select
+  (created -> 'order' ->> 'id')::uuid,
+  (created ->> 'paymentAttemptId')::uuid
+from (
+  select public.create_online_counter_order(
+    jsonb_build_array(jsonb_build_object('variantId','00000000-0000-0000-0000-0000000000e1','quantity',1,'observedPricePaise',1250)),
+    '00000000-0000-0000-0000-000000000f04', 'fp-online-4', 'dodo', repeat('f', 64), 30
+  ) as created
+) s;
+-- Manager attaches a usable provider checkout.
+select public.attach_provider_checkout(
+  (select order_id from t_handoff), (select attempt_id from t_handoff),
+  'dodo', 'sess_task8', 'https://checkout.dodopayments.com/sess_task8', null
+);
+
+-- Anonymous and unknown-token claims reveal nothing.
+select set_config('request.jwt.claims', '', true);
+select throws_ok(
+  $$select public.claim_payment_handoff(repeat('f', 64))$$,
+  '42501', null, 'an anonymous visitor cannot claim a handoff'
+);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a3","role":"authenticated"}', true);
+select throws_ok(
+  $$select public.claim_payment_handoff(repeat('9', 64))$$,
+  'P0002', null, 'an unknown token reveals no order'
+);
+
+-- First authenticated claim returns a frozen projection.
+select is(
+  jsonb_array_length(public.claim_payment_handoff(repeat('f', 64)) -> 'lines'),
+  1,
+  'the first claim returns the frozen order lines'
+);
+select is(
+  (select student_id from public.orders where id = (select order_id from t_handoff)),
+  '00000000-0000-0000-0000-0000000000a3'::uuid,
+  'claiming sets the order student to the claimant'
+);
+select lives_ok(
+  $$select public.get_payment_handoff(repeat('f', 64))$$,
+  'the same claimant can reopen the handoff'
+);
+select ok(
+  not (public.get_payment_handoff(repeat('f', 64)) ? 'id')
+    and not (public.get_payment_handoff(repeat('f', 64)) ? 'token_sha256')
+    and not (public.get_payment_handoff(repeat('f', 64)) ? 'checkoutUrl'),
+  'the claimant projection hides ids, tokens, and checkout urls'
+);
+
+-- Redirect and status are available to the claimant.
+select is(
+  (public.get_payment_redirect(repeat('f', 64)) ->> 'checkoutUrl'),
+  'https://checkout.dodopayments.com/sess_task8',
+  'the claimant resolves the server-stored checkout url'
+);
+select is(
+  (public.get_payment_return_status((select attempt_id from t_handoff)) ->> 'paymentState'),
+  'pending',
+  'the claimant reads the current payment state'
+);
+
+-- A different authenticated user is denied everywhere.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}', true);
+select throws_ok(
+  $$select public.get_payment_handoff(repeat('f', 64))$$,
+  'P0002', null, 'a different user cannot read a claimed handoff'
+);
+select throws_ok(
+  $$select public.get_payment_redirect(repeat('f', 64))$$,
+  'P0002', null, 'a different user cannot resolve the checkout url'
+);
+select throws_ok(
+  format($$select public.get_payment_return_status(%L)$$, (select attempt_id from t_handoff)),
+  'P0002', null, 'a different user cannot read the return status'
 );
 
 select * from finish();
