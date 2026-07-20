@@ -38,4 +38,31 @@ describe("product-first product list", () => {
     expect(markup).toContain("1 low");
     expect(markup).toContain("1 out");
   });
+
+  it("uses a plain-language empty attention state", () => {
+    const markup = renderToStaticMarkup(
+      <ProductList
+        products={[
+          {
+            id: "product-1",
+            name: "Pen",
+            categoryName: "Stationery",
+            isActive: true,
+            variants: [
+              {
+                id: "blue",
+                currentStock: 50,
+                lowStockThreshold: 5,
+                isActive: true,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("None");
+    expect(markup).not.toContain("0 low");
+    expect(markup).not.toContain("0 out");
+  });
 });

@@ -64,7 +64,9 @@ export function ProductList({
             <span>{product.variants.length} variants</span>
             <span>{totalStock} total</span>
             <span>
-              {lowCount} low · {outCount} out
+              {lowCount === 0 && outCount === 0
+                ? "None"
+                : `${lowCount} low · ${outCount} out`}
             </span>
             <span>{product.isActive ? "Active" : "Archived"}</span>
           </Link>
