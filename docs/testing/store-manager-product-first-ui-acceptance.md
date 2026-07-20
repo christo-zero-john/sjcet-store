@@ -340,29 +340,57 @@ option
 
 ## Product and variant images
 
-These tests verify that images remain organized at the product level while allowing a sellable variant to show its own image.
+These tests verify that image ownership and editing remain local to each
+sellable variant.
 
-### SM-UX-018: Manage product images as one gallery
+### SM-UX-018: Render one image-aware card per variant
 
-**Given** the manager is adding or editing a product
+**Given** a product has two stored variants
 
-**Then** the product form contains one primary image position
+**When** the manager opens product details
 
-**And** the manager can add optional additional product images
+**Then** the page renders two separate variant cards
 
-**And** the product and all its variants share this product gallery
+**And** each card shows its variant image or a no-image placeholder
 
-### SM-UX-019: Optionally assign an image to a variant
+**And** no product gallery or primary-image control is shown
+
+### SM-UX-019: Edit one variant and its image
 
 **Given** a product has multiple sellable variants
 
-**When** the manager adds or edits a variant
+**When** the manager selects **Edit variant** on one card
 
-**Then** assigning a variant-specific image is optional
+**Then** only that card's editor opens
 
-**And** a variant with its own image displays that image in variant-specific inventory and product views
+**And** the manager can change its SKU, barcode, option values, price,
+low-stock threshold, and optional image
 
-**And** a variant without its own image falls back to the product’s primary image
+**And** replacing or removing the image does not alter another variant
+
+### SM-UX-019A: Preserve purchased variants through catalog removal
+
+**Given** a variant has purchase history
+
+**When** the manager no longer wants to sell it
+
+**Then** the interface offers **Remove from catalog**, not deletion
+
+**And** the variant, image, stock movements, order reference, and historical
+order-line snapshots remain stored
+
+**And** a direct database deletion is rejected by the restrictive order-line
+foreign key
+
+### SM-UX-019B: Order variant-first product actions
+
+**Given** the manager opens product details
+
+**Then** variant cards appear first
+
+**And** **Add variant** appears after the cards
+
+**And** **Edit product** appears after **Add variant**
 
 ## SKU entry
 
@@ -454,17 +482,20 @@ These tests verify that product entry remains one focused task and reveals optio
 
 **Then** the application uses one page rather than a multi-step wizard
 
-**And** the initial form emphasizes product name, category, description, primary image, price, SKU, stock, and low-stock alert
+**And** the initial form emphasizes product name, category, description,
+explicit product options, and sellable-variant SKU, price, stock, and low-stock
+alert
 
-**And** optional additional images do not compete with the essential fields
+**And** each sellable variant row offers one optional variant image
 
-**And** variant controls remain hidden until the manager chooses to add variants
+**And** the form contains at least one explicit sellable-variant row
 
 **And** catalog configuration internals do not appear in the initial product form
 
-**When** the manager chooses to add variants
+**When** the manager chooses **Add variant**
 
-**Then** the grouped variant editor appears within the same product workflow
+**Then** another independent variant row appears within the same product
+workflow
 
 **And** the application still requires the manager to create each sellable variant explicitly
 
@@ -561,9 +592,12 @@ Use this checklist before accepting the product-first manager interface:
 - [ ] Referenced parameters and values cannot be removed
 - [ ] The database rejects attempted removal of referenced data
 - [ ] Parameter and value archive states do not exist
-- [ ] Products support one primary image and optional additional images
-- [ ] Variants can optionally use their own image
-- [ ] Variants without their own image use the product’s primary image
+- [ ] Every variant can optionally use one image
+- [ ] Product creation has no product-level primary-image or gallery control
+- [ ] Variants without an image use the shared no-image placeholder
+- [ ] Product details render one card and one **Edit variant** action per variant
+- [ ] **Add variant** appears before **Edit product**
+- [ ] Purchased variants can only be removed from the catalog, not deleted
 - [ ] Variant SKUs support manual entry and optional editable generation
 - [ ] Every variant supports an optional unique barcode
 - [ ] Duplicate SKUs are rejected with field-level feedback
