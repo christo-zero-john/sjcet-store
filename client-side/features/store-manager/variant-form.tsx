@@ -89,6 +89,15 @@ export function VariantForm({
           type="number"
         />
       </label>
+      <label className="wide-field">
+        Variant image (optional)
+        <input
+          accept="image/jpeg,image/png,image/webp"
+          name="variantImage"
+          type="file"
+        />
+        <small>Choose a file only when adding or replacing this image.</small>
+      </label>
       {configuredAttributes
         .filter((config) => config.is_variant_axis)
         .map((config) => {
