@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(58);
+select plan(74);
 
 -- ---------------------------------------------------------------------------
 -- Schema surface: reservation and handoff records.
@@ -362,6 +362,90 @@ select throws_ok(
 select throws_ok(
   format($$select public.get_payment_return_status(%L)$$, (select attempt_id from t_handoff)),
   'P0002', null, 'a different user cannot read the return status'
+);
+
+-- ---------------------------------------------------------------------------
+-- Task 9: verified webhook processing and one-time stock deduction.
+-- Order f04 (from Task 8) is awaiting_payment with checkout sess_task8 attached.
+-- ---------------------------------------------------------------------------
+-- A non-service caller is denied.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+select throws_ok(
+  format($$select public.process_online_payment_event('dodo','evt-x','payment.succeeded','sess_task8',null,1250,'INR',%L,repeat('a',64),now())$$, (select order_id from t_handoff)),
+  '42501', null, 'only the service role can process payment events'
+);
+
+-- Act as the service role for the remaining checks.
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+select is(
+  public.process_online_payment_event('dodo','evt-proc','processing','sess_task8',null,1250,'INR',(select order_id from t_handoff),repeat('a',64),now()) ->> 'status',
+  'processed', 'a processing event advances the attempt'
+);
+select is(
+  (select status::text from public.payment_attempts where id = (select attempt_id from t_handoff)),
+  'processing', 'the attempt is marked processing'
+);
+
+select is(
+  public.process_online_payment_event('dodo','evt-amt','succeeded','sess_task8',null,9999,'INR',(select order_id from t_handoff),repeat('a',64),now()) ->> 'code',
+  'amount_mismatch', 'a wrong amount is a reconciliation failure'
+);
+select is(
+  public.process_online_payment_event('dodo','evt-cur','succeeded','sess_task8',null,1250,'USD',(select order_id from t_handoff),repeat('a',64),now()) ->> 'code',
+  'currency_mismatch', 'a wrong currency is a reconciliation failure'
+);
+select is(
+  public.process_online_payment_event('dodo','evt-meta','succeeded','sess_task8',null,1250,'INR',gen_random_uuid(),repeat('a',64),now()) ->> 'code',
+  'order_metadata_mismatch', 'mismatched order metadata is a reconciliation failure'
+);
+select is(
+  public.process_online_payment_event('dodo','evt-unknown','succeeded','sess_missing',null,1250,'INR',(select order_id from t_handoff),repeat('a',64),now()) ->> 'reason',
+  'unknown_attempt', 'an unknown checkout is ignored'
+);
+
+-- No mismatch changed the physical stock.
+select is(
+  (select current_stock from public.product_variants where id='00000000-0000-0000-0000-0000000000e1'),
+  8, 'a reconciliation failure never deducts stock'
+);
+
+-- A verified success deducts stock once and fulfils the order.
+select is(
+  public.process_online_payment_event('dodo','evt-success','succeeded','sess_task8','pay_1',1250,'INR',(select order_id from t_handoff),repeat('a',64),now()) ->> 'status',
+  'processed', 'a verified success is processed'
+);
+select is(
+  (select current_stock from public.product_variants where id='00000000-0000-0000-0000-0000000000e1'),
+  7, 'a verified success deducts physical stock once'
+);
+select is(
+  (select status::text from public.orders where id = (select order_id from t_handoff)),
+  'fulfilled', 'a paid online order becomes fulfilled'
+);
+select is(
+  (select count(*)::int from public.stock_reservations where order_id = (select order_id from t_handoff) and status='consumed'),
+  1, 'the reservation is consumed on success'
+);
+select is(
+  (select count(*)::int from public.stock_movements where order_id = (select order_id from t_handoff) and movement_type='sale'),
+  1, 'exactly one sale movement is written'
+);
+
+-- Replaying the exact event is idempotent.
+select is(
+  public.process_online_payment_event('dodo','evt-success','succeeded','sess_task8','pay_1',1250,'INR',(select order_id from t_handoff),repeat('a',64),now()) ->> 'status',
+  'duplicate', 'an exact replay is idempotent'
+);
+select is(
+  (select current_stock from public.product_variants where id='00000000-0000-0000-0000-0000000000e1'),
+  7, 'a replay does not deduct stock again'
+);
+
+-- A same-id payload collision is rejected.
+select throws_ok(
+  format($$select public.process_online_payment_event('dodo','evt-success','succeeded','sess_task8','pay_1',1250,'INR',%L,repeat('b',64),now())$$, (select order_id from t_handoff)),
+  '22023', null, 'a reused event id with a new payload is rejected'
 );
 
 select * from finish();

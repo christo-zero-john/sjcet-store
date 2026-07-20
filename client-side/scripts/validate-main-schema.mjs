@@ -132,6 +132,14 @@ const requiredPatterns = new Map([
     "cash order function",
     /\bcreate function public\.complete_cash_counter_sale\b/i,
   ],
+  [
+    "payment event function",
+    /\bcreate function public\.process_online_payment_event\b/i,
+  ],
+  [
+    "authenticated handoff claim",
+    /\bcreate function public\.claim_payment_handoff\b/i,
+  ],
   ["college signup hook", /\bcreate function private\.hook_restrict_college_signup\b/i],
   ["row-level security", /\benable row level security\s*;/i],
 ]);

@@ -5453,6 +5453,221 @@ end;
 $$;
 
 
+create function public.process_online_payment_event(
+  provider_name text,
+  provider_event_id text,
+  event_type text,
+  provider_checkout_id text,
+  provider_payment_id text,
+  event_amount_paise bigint,
+  event_currency text,
+  event_order_id uuid,
+  payload_sha256 text,
+  occurred_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  existing_event record;
+  attempt record;
+  order_actor uuid;
+  reservation record;
+  active_reservations integer;
+begin
+  if (select auth.role()) is distinct from 'service_role' then
+    raise exception using errcode = '42501',
+      message = 'UNAUTHORIZED: Service-role access is required.';
+  end if;
+
+  if nullif(btrim(provider_name), '') is null
+    or nullif(btrim(provider_event_id), '') is null
+    or nullif(btrim(event_type), '') is null
+    or payload_sha256 !~ '^[a-f0-9]{64}$' then
+    raise exception using errcode = '22023',
+      message = 'PROVIDER_EVENT_INVALID: The provider event was malformed.';
+  end if;
+
+  -- Idempotency ledger first.
+  insert into private.processed_webhooks (provider, event_id, event_type, payload_sha256)
+  values (provider_name, provider_event_id, event_type, payload_sha256)
+  on conflict (provider, event_id) do nothing;
+
+  if not found then
+    select pw.payload_sha256, pw.event_type
+    into existing_event
+    from private.processed_webhooks pw
+    where pw.provider = provider_name and pw.event_id = provider_event_id;
+
+    if existing_event.payload_sha256 = payload_sha256
+      and existing_event.event_type = event_type then
+      return jsonb_build_object('status', 'duplicate');
+    end if;
+
+    raise exception using errcode = '22023',
+      message = 'PROVIDER_EVENT_INVALID: A provider event id was reused with a different payload.';
+  end if;
+
+  -- Locate and lock the matching attempt and order.
+  select
+    pa.id, pa.order_id, pa.status, pa.amount_paise, pa.currency,
+    o.status as order_status, o.created_by
+  into attempt
+  from public.payment_attempts pa
+  join public.orders o on o.id = pa.order_id
+  where pa.provider = process_online_payment_event.provider_name
+    and pa.provider_checkout_id = process_online_payment_event.provider_checkout_id
+  for update of pa, o;
+
+  if not found then
+    return jsonb_build_object('status', 'ignored', 'reason', 'unknown_attempt');
+  end if;
+
+  order_actor := attempt.created_by;
+
+  -- Verify metadata, amount, and currency for any state-changing event.
+  if attempt.order_id is distinct from event_order_id then
+    update public.payment_attempts
+    set reconciliation_code = 'order_metadata_mismatch',
+        reconciliation_message = 'Provider order metadata did not match.'
+    where id = attempt.id;
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (order_actor, 'payment.reconciliation', 'payment_attempt', attempt.id,
+      jsonb_build_object('code', 'order_metadata_mismatch'));
+    return jsonb_build_object('status', 'reconciliation', 'code', 'order_metadata_mismatch');
+  end if;
+
+  if event_type = 'succeeded'
+    and (attempt.amount_paise is distinct from event_amount_paise) then
+    update public.payment_attempts
+    set reconciliation_code = 'amount_mismatch',
+        reconciliation_message = 'Provider amount did not match the frozen total.'
+    where id = attempt.id;
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (order_actor, 'payment.reconciliation', 'payment_attempt', attempt.id,
+      jsonb_build_object('code', 'amount_mismatch'));
+    return jsonb_build_object('status', 'reconciliation', 'code', 'amount_mismatch');
+  end if;
+
+  if event_type = 'succeeded' and upper(coalesce(event_currency, '')) <> 'INR' then
+    update public.payment_attempts
+    set reconciliation_code = 'currency_mismatch',
+        reconciliation_message = 'Provider currency did not match INR.'
+    where id = attempt.id;
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (order_actor, 'payment.reconciliation', 'payment_attempt', attempt.id,
+      jsonb_build_object('code', 'currency_mismatch'));
+    return jsonb_build_object('status', 'reconciliation', 'code', 'currency_mismatch');
+  end if;
+
+  -- Processing: advance a pending attempt.
+  if event_type = 'processing' then
+    update public.payment_attempts
+    set status = 'processing'
+    where id = attempt.id and status = 'pending';
+    return jsonb_build_object('status', 'processed', 'event', 'processing');
+  end if;
+
+  -- Failure or cancellation: release without deducting stock.
+  if event_type in ('failed', 'cancelled') then
+    if attempt.status in ('pending', 'processing') then
+      update public.payment_attempts
+      set status = event_type::public.payment_status
+      where id = attempt.id;
+
+      update public.stock_reservations
+      set status = 'released', released_at = now()
+      where order_id = attempt.order_id and status = 'active';
+
+      update private.payment_handoffs
+      set revoked_at = now()
+      where order_id = attempt.order_id and revoked_at is null;
+
+      insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+      values (order_actor, 'payment.' || event_type, 'payment_attempt', attempt.id, '{}'::jsonb);
+    end if;
+    return jsonb_build_object('status', 'processed', 'event', event_type);
+  end if;
+
+  -- Success: require a payable order and active reservations.
+  if attempt.order_status <> 'awaiting_payment' then
+    update public.payment_attempts
+    set reconciliation_code = 'late_success',
+        reconciliation_message = 'A success event arrived for a non-payable order.'
+    where id = attempt.id;
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (order_actor, 'payment.reconciliation', 'payment_attempt', attempt.id,
+      jsonb_build_object('code', 'late_success'));
+    return jsonb_build_object('status', 'reconciliation', 'code', 'late_success');
+  end if;
+
+  select count(*) into active_reservations
+  from public.stock_reservations
+  where order_id = attempt.order_id and status = 'active';
+
+  if active_reservations = 0 then
+    update public.payment_attempts
+    set reconciliation_code = 'reservation_expired',
+        reconciliation_message = 'No active reservation remained for a successful payment.'
+    where id = attempt.id;
+    insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+    values (order_actor, 'payment.reconciliation', 'payment_attempt', attempt.id,
+      jsonb_build_object('code', 'reservation_expired'));
+    return jsonb_build_object('status', 'reconciliation', 'code', 'reservation_expired');
+  end if;
+
+  -- Deduct physical stock once per line in stable order, then consume.
+  for reservation in
+    select variant_id, quantity
+    from public.stock_reservations
+    where order_id = attempt.order_id and status = 'active'
+    order by variant_id
+    for update
+  loop
+    perform private.deduct_variant_sale(
+      reservation.variant_id, reservation.quantity, attempt.order_id,
+      order_actor, 'Online counter sale'
+    );
+  end loop;
+
+  update public.stock_reservations
+  set status = 'consumed', consumed_at = now()
+  where order_id = attempt.order_id and status = 'active';
+
+  update public.payment_attempts
+  set status = 'succeeded',
+      provider_payment_id = process_online_payment_event.provider_payment_id,
+      succeeded_at = now(),
+      reconciliation_code = null,
+      reconciliation_message = null
+  where id = attempt.id;
+
+  update public.orders
+  set status = 'paid', paid_at = now()
+  where id = attempt.order_id;
+
+  update public.orders
+  set status = 'fulfilled', fulfilled_at = now()
+  where id = attempt.order_id;
+
+  update private.payment_handoffs
+  set revoked_at = now()
+  where order_id = attempt.order_id and revoked_at is null;
+
+  insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
+  values
+    (order_actor, 'payment.succeeded', 'payment_attempt', attempt.id,
+      jsonb_build_object('provider', provider_name)),
+    (order_actor, 'order.paid', 'order', attempt.order_id, '{}'::jsonb),
+    (order_actor, 'order.fulfilled', 'order', attempt.order_id, '{}'::jsonb);
+
+  return jsonb_build_object('status', 'processed', 'event', 'succeeded', 'order_paid', true);
+end;
+$$;
+
+
 create trigger profiles_set_updated_at
 before update on private.profiles
 for each row
@@ -6297,5 +6512,12 @@ grant execute on function public.claim_payment_handoff(text) to authenticated, s
 grant execute on function public.get_payment_handoff(text) to authenticated, service_role;
 grant execute on function public.get_payment_redirect(text) to authenticated, service_role;
 grant execute on function public.get_payment_return_status(uuid) to authenticated, service_role;
+
+revoke execute on function public.process_online_payment_event(
+  text, text, text, text, text, bigint, text, uuid, text, timestamptz
+) from public, anon, authenticated;
+grant execute on function public.process_online_payment_event(
+  text, text, text, text, text, bigint, text, uuid, text, timestamptz
+) to service_role;
 
 commit;
