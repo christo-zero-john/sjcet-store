@@ -2,7 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended when explicitly authorized) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Repair empty, complete, or partially applied Supabase schemas with one idempotent migration while making product options explicitly product-owned and adding simple auto-increment product numbers.
+**Goal:** Repair complete or partially applied Supabase application schemas with
+one idempotent migration while making product options explicitly product-owned
+and adding simple auto-increment product numbers. Fresh projects use
+`main_schema.sql`.
 
 **Architecture:** Keep UUID primary keys and global reusable option definitions. Add `products.product_number` and `product_options`, change product/variant validation to resolve product-owned options, and make category configuration suggestion-only. Deliver every database correction through one rerunnable `006` reconciliation migration while keeping `main_schema.sql` declarative.
 
@@ -14,6 +17,18 @@
   Supabase through the SQL Editor on 2026-07-19 (user confirmed).
 - The Supabase migration ledger was not inspected or modified by Codex, so this
   records schema application only and does not claim CLI ledger synchronization.
+
+## Current implementation status
+
+| Area | Status |
+|---|---|
+| Reconciliation migration | Implemented, manually applied, and structurally checked |
+| Canonical `main_schema.sql` | Contains `product_number`, `product_options`, RLS, and the current creation RPC |
+| New-product option draft | Starts empty and supports explicit add/remove |
+| Option chooser | Immediately lists reusable options and **Create a new option** |
+| Product details | Reads persisted `product_options` and displays the product number |
+| Persisted-option removal | Still pending; no UI or RPC is claimed complete |
+| Migration ledger synchronization | Unknown and intentionally unchanged |
 
 ## Global Constraints
 
@@ -37,7 +52,7 @@
 |---|---|
 | `docs/supabase/migrations/20260719125603_006-19-07-2026-reconcile-product-options.sql` | Idempotent schema reconciliation and current RPC definitions |
 | `docs/supabase/main_schema.sql` | Clean canonical final schema |
-| `docs/supabase/tests/product_owned_options.test.sql` | Database ownership, validation, backfill, and removal tests |
+| `client-side/features/store-manager/product-option-action-boundary.test.ts` | Guards product-only option creation against category attachment |
 | `client-side/scripts/validate-main-schema.mjs` | Canonical-schema and new migration structural guard |
 | `client-side/features/catalog/contracts.ts` | Product-option and product-number TypeScript contracts |
 | `client-side/features/catalog/product-draft.ts` | Immutable explicit-option draft operations |
@@ -64,7 +79,7 @@
 - Consumes: the five existing migrations and canonical schema
 - Produces: structural validation for the `006` filename and idempotent SQL patterns
 
-- [ ] **Step 1: Extend the schema validator with failing reconciliation checks**
+- [x] **Step 1: Extend the schema validator with failing reconciliation checks**
 
 Require the exact migration filename and assert that it contains:
 
@@ -81,7 +96,7 @@ const reconciliationRequirements = new Map([
 
 Reject unguarded `add column`, non-replaceable public/private function creation, and unguarded policy/trigger recreation in the new migration.
 
-- [ ] **Step 2: Run the guard and confirm failure**
+- [x] **Step 2: Run the guard and confirm failure**
 
 Run from `client-side/`:
 
@@ -91,7 +106,7 @@ pnpm schema:check
 
 Expected: FAIL because the `006` reconciliation migration does not exist.
 
-- [ ] **Step 3: Create the migration skeleton**
+- [x] **Step 3: Create the migration skeleton**
 
 Create the exact file with:
 
@@ -104,11 +119,11 @@ notify pgrst, 'reload schema';
 commit;
 ```
 
-- [ ] **Step 4: Run the guard**
+- [x] **Step 4: Run the guard**
 
 Expected: FAIL only for the schema elements intentionally supplied by Task 2.
 
-- [ ] **Step 5: Review**
+- [x] **Step 5: Review**
 
 Confirm the validator ignores the five grandfathered files, rejects a seventh file with serial `006`, and does not require migration-only constructs in `main_schema.sql`.
 
@@ -261,7 +276,7 @@ RLS, grants, overload ambiguity, identity backfill, and rerun safety.
 Commit:
 
 ```powershell
-git add -- docs/supabase/migrations/20260719125603_006-19-07-2026-reconcile-product-options.sql docs/supabase/main_schema.sql docs/supabase/tests/product_owned_options.test.sql client-side/scripts/validate-main-schema.mjs
+git add -- docs/supabase/migrations/20260719125603_006-19-07-2026-reconcile-product-options.sql docs/supabase/main_schema.sql client-side/scripts/validate-main-schema.mjs client-side/features/store-manager/product-option-action-boundary.test.ts
 git commit -m "feat: reconcile product option schema"
 ```
 
@@ -273,19 +288,19 @@ git commit -m "feat: reconcile product option schema"
 - Produces: `ProductOptionDraft`, `addProductOption`, `removeProductOption`
 - Consumes: global reusable types/values and category suggestion defaults
 
-- [ ] **Step 1: Write failing draft tests**
+- [x] **Step 1: Write failing draft tests**
 
 Cover an empty initial option list, selecting exactly one option, rejecting a
 duplicate, and removing an option plus its values from every variant without
 changing name, description, images, SKU, price, or stock.
 
-- [ ] **Step 2: Confirm failure**
+- [x] **Step 2: Confirm failure**
 
 ```powershell
 pnpm exec vitest run features/catalog/product-draft.test.ts
 ```
 
-- [ ] **Step 3: Add contracts and immutable helpers**
+- [x] **Step 3: Add contracts and immutable helpers**
 
 ```ts
 export type ProductOptionDraft = Readonly<{
@@ -298,7 +313,7 @@ export type ProductOptionDraft = Readonly<{
 
 Helpers return new arrays and never mutate category configurations.
 
-- [ ] **Step 4: Pass focused tests and review**
+- [x] **Step 4: Pass focused tests and review**
 
 Check duplicate prevention, value cleanup, and preservation of unrelated draft
 state.
@@ -311,51 +326,51 @@ state.
 - Consumes: explicit option draft helpers
 - Produces: chooser with existing/create paths and remove-from-draft behavior
 
-- [ ] **Step 1: Write failing component tests**
+- [x] **Step 1: Write failing component tests**
 
 Assert:
 
 ```ts
 expect(markup).not.toContain("colour Edit");
 expect(markup).toContain("Add product option");
-expect(markup).toContain("Choose existing option");
-expect(markup).toContain("Create new option");
+expect(markup).toContain("Available options");
+expect(markup).toContain("Create a new option");
 expect(markup).toContain("Remove from product");
 ```
 
 Add a category-selection test proving category suggestions are not selected.
 
-- [ ] **Step 2: Confirm failure**
+- [x] **Step 2: Confirm failure**
 
 ```powershell
 pnpm exec vitest run features/store-manager/product-form.test.tsx features/store-manager/product-option-inline-panel.test.tsx
 ```
 
-- [ ] **Step 3: Separate suggestions from selected options**
+- [x] **Step 3: Separate suggestions from selected options**
 
 Initialize selected product options to `[]`. Use effective category
 configurations only to order and prefill chooser defaults. Do not derive
 selected option chips from category IDs.
 
-- [ ] **Step 4: Implement chooser paths**
+- [x] **Step 4: Implement chooser paths**
 
 Existing selection updates only local draft state. New option creation saves
 the reusable type/values, then adds the returned type to local draft state. It
 must not attach a `category_attribute` unless the manager is explicitly editing
 category settings.
 
-- [ ] **Step 5: Implement removal**
+- [x] **Step 5: Implement removal**
 
 Render **Remove from product** beside each selected draft option. Confirm only
 when variant rows contain a selected value for that option. Remove those
 values, retain the variant rows, and preserve all unrelated form state.
 
-- [ ] **Step 6: Submit explicit configuration**
+- [x] **Step 6: Submit explicit configuration**
 
 Add a hidden JSON field containing selected options. Parse and send it as
 `selected_product_options` to the seven-argument RPC.
 
-- [ ] **Step 7: Pass focused tests, review, and commit**
+- [x] **Step 7: Pass focused tests and review**
 
 Review category changes, nested category creation, option creation failures,
 duplicate choices, focus return, and draft preservation.

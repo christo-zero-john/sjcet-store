@@ -73,10 +73,11 @@ variant without making unused category parameters appear selected.
 Selecting a parent category or subcategory does not select any product option.
 The Product options section starts empty for a new product.
 
-Selecting **Add product option** opens one focused panel with two paths:
+Selecting **Add product option** opens one focused panel that immediately lists
+every available reusable option and also provides **Create a new option**:
 
-1. search and select an existing reusable option; or
-2. create a new reusable option and its allowed values.
+1. select an existing reusable option from the visible list; or
+2. select **Create a new option** to open the name-and-values form.
 
 Category suggestions appear first, followed by the remaining reusable options.
 Choosing an option adds it only to the current product draft. Creating an
@@ -153,12 +154,17 @@ Create one new migration using the required filename convention with serial
 `006`. The five existing migrations remain unchanged because they may already
 exist in remote migration ledgers.
 
-The reconciliation migration is safe to run more than once and handles:
+The reconciliation migration is safe to run more than once after the base
+application relations exist. It handles:
 
-- an empty Supabase application schema;
 - the current complete schema;
 - a database where any earlier migration was partially applied; and
 - SQL Editor execution that did not update the migration ledger.
+
+It deliberately rejects a database missing the base application tables with a
+specific instruction to run `main_schema.sql`. A brand-new project uses
+`main_schema.sql`; migration `006` repairs existing or partially applied
+application schemas.
 
 It uses:
 
@@ -196,11 +202,11 @@ Database verification covers:
 UI verification covers:
 
 - category selection leaves Product options empty;
-- Add product option offers existing and new paths;
+- Add product option immediately lists every unselected reusable option and a
+  **Create a new option** action;
 - selecting an existing option adds only that option;
 - creating an option selects it without clearing the product draft;
 - removing a draft option succeeds;
 - changing category does not inject options;
 - product creation succeeds through the reconciled RPC; and
 - product lists and details show the simple product number.
-
