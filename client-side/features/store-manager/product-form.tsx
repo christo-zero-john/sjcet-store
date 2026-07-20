@@ -464,15 +464,6 @@ export function ProductForm({
               Description
               <textarea name="description" rows={3} />
             </label>
-            <label className="wide-field">
-              Primary image (optional)
-              <input
-                accept="image/jpeg,image/png,image/webp"
-                name="primaryImage"
-                type="file"
-              />
-              <small>JPEG, PNG, or WebP up to 5 MB.</small>
-            </label>
           </div>
         </section>
 

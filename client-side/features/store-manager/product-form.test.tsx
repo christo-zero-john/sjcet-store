@@ -95,6 +95,7 @@ describe("product form", () => {
     expect(markup).toContain("SKU");
     expect(markup).toContain("Price");
     expect(markup).toContain("Opening stock");
+    expect(markup).not.toContain("Primary image");
     expect(markup).toContain("+ Create parent category");
     expect(markup).toContain("+ Create subcategory");
     expect(markup).toContain("Edit selected parent category");
