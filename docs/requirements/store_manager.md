@@ -1,3 +1,11 @@
+---
+meta:
+  contentType: Reference
+  title: Define store-manager requirements
+  navLabel: Store Manager Requirements
+  category: Requirements
+---
+
 # Store Manager Requirements
 
 ## 1. Purpose
@@ -6,6 +14,9 @@ The store-manager module supports counter sales, inventory maintenance, payment
 collection, billing, and order history for the college store. It uses the shared
 authentication, authorization, database, audit, and payment foundations defined
 in `docs/architecture/project-foundation.md`.
+
+This reference is the authoritative functional contract for store-manager
+catalog, inventory, order, and payment behavior.
 
 ## 2. Roles and access
 
@@ -130,9 +141,9 @@ in `docs/architecture/project-foundation.md`.
 
 ### 4.3 Products and variants
 
-- A product stores shared family information: category, name, optional brand,
-  description, product specifications, product gallery, active/archived state,
-  and audit fields.
+- A product stores shared family information: manager-facing product number,
+  category, name, optional brand, description, product specifications,
+  active/archived state, and audit fields.
 - A product has one or more sellable variants. Each variant stores a unique
   SKU, optional globally unique barcode, selling price, current stock,
   low-stock threshold, optional image, and active state.
@@ -158,10 +169,21 @@ in `docs/architecture/project-foundation.md`.
   existing variants. The manager may bulk-assign one default value; otherwise,
   variants that existed before the attribute was added may retain a null value.
   Variants created afterward must select an allowed value.
-- Non-variant attributes may be stored once for the product when configured by
-  its category.
-- Edit product details without changing historical order-line snapshots.
-- Archive products instead of hard-deleting products referenced by orders.
+- Non-variant attributes may be stored once for the product when explicitly
+  selected in `product_options`.
+- Product details render one image-aware card per variant. Each card exposes
+  **Edit variant** for that variant's SKU, barcode, option values, price,
+  threshold, and optional image.
+- **Add variant** appears after the variant cards. **Edit product** follows it
+  and changes only category, name, brand, and description.
+- The manager interface does not create or manage a product-level primary image
+  or gallery. Existing legacy product-level image rows remain untouched and are
+  ignored by the variant-first interface.
+- Edit product and variant details without changing historical order-line
+  snapshots.
+- Remove products and variants from the active catalog through archive/restore,
+  never hard deletion. A variant referenced by an order is also protected by a
+  restrictive foreign key.
 - List, search, filter, and sort products and variants.
 - Display out-of-stock and low-stock indicators per variant.
 

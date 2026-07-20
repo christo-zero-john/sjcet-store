@@ -171,9 +171,11 @@ Store-owned tables:
 - `attribute_values`;
 - `category_attributes`;
 - `products`;
+- `product_options`;
 - `product_attribute_values`;
 - `product_variants`;
 - `variant_attribute_values`;
+- `product_images`;
 - `stock_movements`;
 - `orders` (with idempotency key, request fingerprint, and bounded
   online-payment expiry);
@@ -195,8 +197,10 @@ write another module's tables directly.
 
 ### Store module boundaries
 
-- `catalog` owns category configuration and product/variant definitions,
-  including SKU, selling price, and lifecycle state.
+- `catalog` owns category suggestions, explicitly selected product options, and
+  product/variant definitions, including SKU, selling price, one optional image
+  per variant, and lifecycle state. Current manager workflows do not create a
+  product-level gallery.
 - `inventory` owns stock status, append-only movements, and the transactional
   stock-adjustment contract. Application code never writes `current_stock`
   directly.
@@ -266,7 +270,9 @@ can be introduced without changing those features.
 - Money stored as non-negative `bigint` paise with `INR` currency.
 - Human order numbers are separate from primary keys.
 - Historical line descriptions/prices are snapshots.
-- Product, variant, and category removal is archival when referenced.
+- Product, variant, and category removal is archival when referenced. The
+  manager interface never deletes variants; order-line references use
+  `ON DELETE RESTRICT` as a database backstop.
 - Attribute types, attribute values, and category-attribute configuration
   cannot be removed while products or variants reference them. Unreferenced
   records may be deleted after confirmation; these records do not use an
