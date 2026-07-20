@@ -4,7 +4,9 @@ import { fingerprintCounterOrder } from "./fingerprint";
 import type {
   CashReceipt,
   CompleteCashCounterSaleInput,
+  CreateOnlineCounterOrderInput,
   FrozenOrder,
+  OnlineOrderResult,
   OrderErrorCode,
   OrderResult,
   SellableVariant,
@@ -194,4 +196,87 @@ export async function cancelOnlineOrder(
     return mapDatabaseError(error);
   }
   return { ok: true, data: { orderId: parsed.data } };
+}
+
+async function defaultCheckoutDeps(rpc: OrderRpc) {
+  const [{ getPaymentProvider }, { getPaymentEnvironment }, { createHandoffToken }, qrcode] =
+    await Promise.all([
+      import("../payments/provider"),
+      import("../payments/environment"),
+      import("../payments/handoff"),
+      import("qrcode"),
+    ]);
+  const environment = getPaymentEnvironment();
+  return {
+    rpc,
+    provider: getPaymentProvider(),
+    siteUrl: environment.siteUrl,
+    ttlMinutes: environment.handoffTtlMinutes,
+    generateHandoff: createHandoffToken,
+    renderQr: (handoffUrl: string) =>
+      qrcode.default.toDataURL(handoffUrl, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 320,
+        color: { dark: "#10251A", light: "#FFFFFF" },
+      }),
+  };
+}
+
+export async function createOnlineCounterOrder(
+  input: CreateOnlineCounterOrderInput,
+  context?: OrderActionContext,
+): Promise<OrderResult<OnlineOrderResult>> {
+  const items = counterItemsSchema.safeParse(input.items);
+  if (!items.success) {
+    return input.items.length === 0
+      ? fail("EMPTY_BASKET", "Add at least one product before checkout.")
+      : fail("INVALID_QUANTITY", "Review the basket and try again.");
+  }
+  const operationId = operationIdSchema.safeParse(input.operationId);
+  if (!operationId.success) {
+    return fail("UNEXPECTED", "Retry this sale from a fresh basket.");
+  }
+
+  const ctx = context ?? (await defaultContext());
+  const { runOnlineCheckoutSaga } = await import("../payments/actions");
+  return runOnlineCheckoutSaga(
+    items.data,
+    operationId.data,
+    await defaultCheckoutDeps(ctx.rpc),
+  );
+}
+
+export async function retryOnlinePayment(
+  input: { orderId: string; operationId: string },
+  context?: OrderActionContext,
+): Promise<OrderResult<OnlineOrderResult>> {
+  const orderId = orderIdSchema.safeParse(input.orderId);
+  const operationId = operationIdSchema.safeParse(input.operationId);
+  if (!orderId.success || !operationId.success) {
+    return fail("ORDER_NOT_PAYABLE", "That order cannot be retried.");
+  }
+
+  const ctx = context ?? (await defaultContext());
+  const { runRestartCheckoutSaga } = await import("../payments/actions");
+  return runRestartCheckoutSaga(
+    orderId.data,
+    operationId.data,
+    await defaultCheckoutDeps(ctx.rpc),
+  );
+}
+
+export async function rotatePaymentHandoff(
+  orderId: string,
+  context?: OrderActionContext,
+): Promise<OrderResult<OnlineOrderResult>> {
+  const parsed = orderIdSchema.safeParse(orderId);
+  if (!parsed.success) {
+    return fail("HANDOFF_INVALID", "That handoff cannot be rotated.");
+  }
+
+  const ctx = context ?? (await defaultContext());
+  const { runRotateHandoff } = await import("../payments/actions");
+  const deps = await defaultCheckoutDeps(ctx.rpc);
+  return runRotateHandoff(parsed.data, deps);
 }

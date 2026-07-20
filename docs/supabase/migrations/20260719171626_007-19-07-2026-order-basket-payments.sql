@@ -1068,7 +1068,7 @@ create function public.rotate_payment_handoff(
   target_order_id uuid,
   handoff_token_sha256 text
 )
-returns void
+returns jsonb
 language plpgsql
 security definer
 set search_path = ''
@@ -1123,6 +1123,18 @@ begin
 
   insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
   values (actor, 'payment.handoff_rotated', 'order', target_order_id, '{}'::jsonb);
+
+  return jsonb_build_object(
+    'order', private.frozen_order_json(target_order_id),
+    'paymentAttemptId', (
+      select id from public.payment_attempts
+      where order_id = target_order_id and status = 'pending'
+        and provider_checkout_id is not null
+      order by created_at desc
+      limit 1
+    ),
+    'expiresAt', (select expires_at from public.orders where id = target_order_id)
+  );
 end;
 $$;
 
