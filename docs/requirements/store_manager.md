@@ -1,23 +1,337 @@
-## Basic Working
-- START
-- Student comes to store
-- Students say what they need
-- Store manager selects those products and add to basket
-- Store manager takes products and then put check to each product(optional) then clicks generate bill. 
-- option of payment is asked(before clicking) with 2 options 
-    - Cash
-    - Online payment
-- If online payment then generate payment link and student pays online
-- If cash then a box that takes the amount of money given by student and then calculate how much money to return to student after the price of order.
-- END
+---
+meta:
+  contentType: Reference
+  title: Define store-manager requirements
+  navLabel: Store Manager Requirements
+  category: Requirements
+---
 
-## 1. Inventory management
-1.1 create, edit, delete new products
-1.2 list all products
-1.3 add stock for products
+# Store Manager Requirements
 
-## 2. Order Management
-2.1 Interface to place orders by store manager.
-2.2 Interface to view all orders by store manager.
-2.3 Generate payment link and students pay.
-2.4 Enter money given by student and calculate how much money to return to student after the price of order.
+## 1. Purpose
+
+The store-manager module supports counter sales, inventory maintenance, payment
+collection, billing, and order history for the college store. It uses the shared
+authentication, authorization, database, audit, and payment foundations defined
+in `docs/architecture/project-foundation.md`.
+
+This reference is the authoritative functional contract for store-manager
+catalog, inventory, order, and payment behavior.
+
+## 2. Roles and access
+
+- A `store_manager` may manage the category hierarchy, attribute configuration,
+  products, variants, stock, counter orders, payments, and store orders.
+- A `super_admin` may perform every store-manager action.
+- Students cannot access manager routes or mutate store inventory.
+- Every manager action must be attributed to the authenticated user.
+- Catalog visibility is not restricted by department, faculty, student, or
+  staff audience. Department-related items are ordinary catalog items visible
+  to every store customer.
+
+## 3. Counter-sale flow
+
+1. A student requests products at the physical store.
+2. The manager searches or browses active, in-stock products.
+3. The manager adds products and quantities to a basket.
+4. The system validates current stock and calculates each line total and the
+   final total on the server.
+5. The manager may physically tick items as collected. This is a UI aid and
+   does not change inventory.
+6. The manager chooses exactly one payment method: `cash` or `online`.
+7. The system creates an order containing immutable product-name, unit-price,
+   quantity, and line-total snapshots.
+8. The selected payment flow is completed:
+   - Cash: enter the amount tendered, show the change due, and confirm receipt.
+   - Online: create a provider-neutral checkout for the exact order total,
+     render an application-owned QR, and let the authenticated claimant review
+     the frozen order before opening the hosted provider checkout.
+9. After successful payment confirmation, the order becomes `paid`, stock is
+   deducted atomically, and the bill can be printed.
+10. If payment is cancelled or fails, the order remains unpaid and stock is not
+    deducted.
+
+### 3.1 Basket and collection behavior
+
+- Adding the same variant merges it into one basket line.
+- Quantity changes must remain positive integers and cannot exceed displayed
+  available stock.
+- Changing quantity resets that line's physical-collected checkbox.
+- Collection checkboxes and collected progress are manager-only transient UI
+  state. They do not change orders, reservations, inventory, or payments.
+- Uncollected lines warn the manager but do not block checkout.
+- The server ignores client-supplied prices, totals, stock values, actor IDs,
+  and payment amounts.
+
+### 3.2 Online QR handoff
+
+- Online order creation freezes line snapshots and totals before provider
+  checkout creation.
+- The QR contains only an application-owned HTTPS handoff URL with a
+  high-entropy opaque token. It never contains raw order data, an internal
+  order UUID, a provider checkout URL, or a secret.
+- Only a SHA-256 hash of the handoff token is stored.
+- Opening the handoff requires the shared authentication boundary. This module
+  does not implement student or guest authentication.
+- The first authenticated user presenting a valid handoff may claim it. A
+  successful claim also assigns the order's `student_id`. A different user
+  cannot take over an already claimed handoff.
+- The handoff page is a read-only shared orders/payments surface. It shows the
+  order number, immutable lines, quantities, prices, total, payment state, and
+  a provider-neutral **Pay securely** action.
+- The provider URL is resolved and validated server-side immediately before
+  redirect. It is not accepted from the browser.
+- Invalid, expired, revoked, or already-claimed handoffs reveal no order data.
+- A manager may rotate an unclaimed awaiting-payment handoff after losing the
+  raw token. Rotation invalidates the old QR. Claimed or terminal handoffs
+  cannot rotate.
+- The natural-language UI authority is
+  `docs/testing/store-manager-order-basket-ui-acceptance.md`.
+
+## 4. Inventory management
+
+### 4.1 Dynamic categories
+
+- Managers create, rename, move, reorder, and archive categories through the
+  store-manager interface.
+- Wherever a category can be created inline, the selected category can also be
+  edited inline through the same prefilled form. The product draft must remain
+  unchanged while either operation is completed.
+- Category names are data, not database enums or hardcoded application lists.
+- The hierarchy supports root categories and one optional subcategory level.
+  A subcategory cannot contain another category.
+- A product belongs to exactly one active category.
+- Archiving a category is rejected while active products or active
+  subcategories still reference it.
+- Moving a category must reject cycles and any result deeper than two levels.
+
+### 4.2 Dynamic attributes
+
+- Managers create reusable attribute types such as Size, Color, Material, or
+  Brand through the interface. These names are examples only and are never
+  seeded as fixed schema values.
+- Managers create allowed values for each attribute type.
+- Wherever an attribute type or allowed value can be created inline, it can
+  also be edited inline through the same prefilled form.
+- Attribute types and values are reusable global catalog data. Renaming one or
+  changing its values updates every category using it. Before saving, the
+  interface shows the number of affected categories.
+- A category configuration selects its applicable attributes and declares
+  whether each attribute is required, defines a sellable variant, and where it
+  appears on the product form.
+- A subcategory inherits its parent category attributes. It may add attributes
+  or override the inherited `required`, `variant-defining`, and display-order
+  settings without changing the parent.
+- Category configuration supplies ordered suggestions and default settings to
+  the product form. Selecting a category never selects an option for a product.
+- A product explicitly owns its selected options. The product form and server
+  validate only those product-owned options, not every category suggestion.
+- An attribute value belongs to one attribute type and cannot be selected for a
+  different type.
+- Attribute types, values, and category configuration cannot be removed while
+  products or variants reference them. The interface disables removal, shows
+  the reference count, and links to affected products.
+- Managers may detach an attribute from a category through the inline edit
+  form. Detachment is disabled while any product or variant in the category's
+  effective scope uses that attribute. Detaching does not delete the reusable
+  attribute type or its allowed values from other categories.
+- Unreferenced attribute types, values, and category configuration may be
+  deleted after confirmation. They do not use archive, hidden, or
+  unavailable-for-new-products states.
+
+### 4.3 Products and variants
+
+- A product stores shared family information: manager-facing product number,
+  category, name, optional brand, description, product specifications,
+  active/archived state, and audit fields.
+- A product has one or more sellable variants. Each variant stores a unique
+  SKU, optional globally unique barcode, selling price, current stock,
+  low-stock threshold, optional image, and active state.
+- The product entry form selects a parent category and optional subcategory
+  separately. It can create either level inline without losing the product
+  draft, and creating a subcategory can create its missing parent inline.
+- The product entry form always exposes **Add product option** after a category
+  is selected. A manager can reuse an existing parameter or create a new one,
+  such as Colour with Blue, Black, and Red, without leaving or clearing the
+  product draft. Selecting or creating the option adds it only to the current
+  product draft; it does not silently attach every category option.
+- Category suggestions appear before other reusable options in the chooser,
+  but remain unselected until the manager chooses one.
+- Every selected product option exposes **Edit** and **Remove from product**.
+  Removing it from a draft removes only that option's product/variant values
+  and preserves unrelated product, SKU, price, and stock input.
+- Managers add variants explicitly. The application never generates the
+  Cartesian product of option values.
+- Each new variant selects one value for every required variant-defining
+  attribute. The selected variant-defining combination must be unique within
+  the product.
+- Adding a required attribute to a product never creates, replaces, or splits
+  existing variants. The manager may bulk-assign one default value; otherwise,
+  variants that existed before the attribute was added may retain a null value.
+  Variants created afterward must select an allowed value.
+- Non-variant attributes may be stored once for the product when explicitly
+  selected in `product_options`.
+- Product details render one image-aware card per variant. Each card exposes
+  **Edit variant** for that variant's SKU, barcode, option values, price,
+  threshold, and optional image.
+- **Add variant** appears after the variant cards. **Edit product** follows it
+  and changes only category, name, brand, and description.
+- The manager interface does not create or manage a product-level primary image
+  or gallery. Existing legacy product-level image rows remain untouched and are
+  ignored by the variant-first interface.
+- Edit product and variant details without changing historical order-line
+  snapshots.
+- Remove products and variants from the active catalog through archive/restore,
+  never hard deletion. A variant referenced by an order is also protected by a
+  restrictive foreign key.
+- List, search, filter, and sort products and variants.
+- Display out-of-stock and low-stock indicators per variant.
+
+### 4.4 Stock
+
+- Add, remove, or correct stock for one variant through explicit stock
+  adjustments.
+- Require a reason for every adjustment.
+- Store the quantity before, delta, quantity after, actor, reason, and time.
+- Reject adjustments that would make stock negative.
+- Deduct variant stock only once when an order is successfully paid.
+- Provide a dedicated inventory view with search, stock-state filters, sorting,
+  active-variant totals, low-stock totals, and out-of-stock totals.
+- Show the immutable stock movement history for each product and variant.
+- Reject manual stock changes for archived variants.
+
+### 4.5 Inventory module boundary
+
+- Catalog management owns categories, attributes, product families, variant
+  definitions, prices, and archive/restore state.
+- Inventory management owns current stock, low/out-of-stock classification,
+  manual adjustments, and movement history.
+- Product and variant removal is archive/restore, not destructive deletion.
+- Order management may consume stock only through the inventory transaction
+  contract. Payment management never writes product or stock data directly.
+- The store-manager interface composes catalog, inventory, order, and payment
+  capabilities while their business rules remain in their owning features.
+- Online awaiting-payment orders use bounded stock reservations. A reservation
+  reduces available stock but does not change physical current stock or create
+  a sale movement. Successful payment consumes the reservation and deducts
+  physical stock once; cancellation, checkout-creation failure, or expiration
+  releases it without a stock change.
+
+## 5. Order management
+
+- Create a counter order from a manager basket.
+- View paginated order history with search and filters for date, payment method,
+  payment state, and order state.
+- View order details, line snapshots, payment details, and the activity trail.
+- Print a bill for a paid order.
+- Never silently edit a paid order. Refunds, returns, and voids are separate
+  audited operations and are outside the first MVP.
+
+## 6. Cash payments
+
+- Accept whole-paise integer values; the UI displays Indian rupees.
+- Require `cash_received >= order_total`.
+- Calculate `change_due = cash_received - order_total` on both client and server.
+- Mark the order paid only after the manager explicitly confirms cash receipt.
+- Store cash received and change due on the payment record.
+
+## 7. Online payments
+
+- Application order and payment code depends on a provider-neutral adapter.
+  The initial adapter uses Dodo Payments Checkout Sessions with one reusable,
+  one-time Pay-What-You-Want product configured in the Dodo dashboard.
+- Replacing Dodo must require a new provider adapter, provider configuration,
+  and webhook verification/normalization, not changes to basket, order, QR,
+  inventory, history, or bill logic.
+- The server supplies the checkout amount in paise. The amount equals the
+  server-calculated order total and is fixed for that checkout.
+- The browser must never supply or override the payable amount.
+- Store the Dodo checkout-session ID, checkout URL, and eventual payment ID.
+- Include the internal order ID in Dodo metadata for reconciliation.
+- Treat redirects as user experience only. A verified `payment.succeeded`
+  webhook is authoritative for marking an order paid.
+- Verify webhook signatures and process webhook events idempotently.
+- Reject a success event if its currency or amount does not match the order.
+- Do not allow partial payments or discount entry in the hosted checkout.
+- Authenticated claimants receive payment status through purpose-built
+  functions, not direct `payment_attempts` table access.
+- A valid but mismatched or late success event enters reconciliation handling;
+  it never silently marks an invalid order paid or consumes unavailable stock.
+- Provider checkout creation uses the payment-attempt ID as its idempotency
+  key. Definitive rejection may release reservations. Ambiguous timeouts and
+  post-creation attachment failures retain reconciliation state and never
+  assume that the provider created nothing.
+
+## 8. Order and payment states
+
+### Order states
+
+`draft -> awaiting_payment -> paid -> fulfilled`
+
+Terminal exception states: `cancelled`, `voided`.
+
+### Payment states
+
+`pending -> processing -> succeeded`
+
+Terminal exception states: `failed`, `cancelled`.
+
+The MVP uses `paid` and `fulfilled` together for counter delivery, but keeps
+them separate in the model so later modules can support collection workflows.
+
+## 9. Business rules
+
+- Money is stored as integer paise; floating-point values are forbidden.
+- Product prices and totals cannot be negative.
+- An empty basket cannot become an order.
+- Quantity must be a positive integer and cannot exceed available stock.
+- Totals are always recalculated on the server from database prices.
+- Category, attribute, and attribute-value names are managed data and cannot be
+  represented by fixed catalog enums.
+- Category depth cannot exceed two levels.
+- A product has exactly one category and at least one sellable variant.
+- Department or audience membership never controls catalog visibility.
+- Paid orders and processed payment webhooks are immutable.
+- Every stock and payment transition must be safe to retry.
+
+## 10. Acceptance scenarios
+
+1. Given sufficient stock, a manager can complete a cash sale and see the exact
+   change due.
+2. Given an online sale, the generated Dodo checkout uses the exact server
+   order total and the order stays unpaid until a valid webhook arrives.
+3. Replaying the same webhook does not deduct stock or record payment twice.
+4. A stale basket with insufficient stock cannot be paid.
+5. Editing a product after a sale does not alter the historical bill.
+6. A student account receives an authorization error on all manager mutations.
+7. A manager can create a category, define a required variant attribute and its
+   values, then create independently priced and stocked variants.
+8. A subcategory product form includes inherited parent attributes and local
+   additions or overrides.
+9. A manager cannot create a third category level, a category cycle, a variant
+   with missing required values, or a duplicate variant combination.
+10. A department-related product remains visible without department or audience
+    checks.
+11. A manager can edit a product and its variants, add independently priced
+    variants, archive and restore them, and review every stock movement.
+12. Inventory search and stock-state filters correctly distinguish healthy,
+    low-stock, out-of-stock, and archived variants.
+13. An online checkout displays an application-owned QR whose authenticated
+    claimant can review frozen order details before opening the provider.
+14. A second authenticated user cannot take over a claimed payment handoff.
+15. Cancelling or expiring an unpaid online order releases reservations
+    without changing physical stock.
+16. The payment orchestration contract passes against a fake provider without
+    importing Dodo types outside the Dodo adapter.
+17. The order-basket implementation does not modify student feature,
+    dashboard, or student requirement files.
+
+## 11. Store-manager user experience acceptance
+
+The store-manager interface follows the product-first acceptance contract in
+`docs/testing/store-manager-product-first-ui-acceptance.md`. Implementations and
+reviews must verify every applicable `SM-UX-*` scenario in that document.
+
+The counter-sale, order, QR, and payment flow follows
+`docs/testing/store-manager-order-basket-ui-acceptance.md`. Implementations and
+reviews must verify every applicable `SM-ORDER-*` scenario in that document.
