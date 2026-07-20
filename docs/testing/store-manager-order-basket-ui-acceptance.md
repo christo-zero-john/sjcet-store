@@ -308,3 +308,26 @@ The browser acceptance test follows this exact visible order:
 15. verify exactly one stock deduction per line;
 16. open order history and the paid bill; and
 17. repeat with cash, including exact cash and excess cash/change.
+
+## Automated evidence traceability
+
+| Scenario | Automated evidence |
+|---|---|
+| `SM-ORDER-001` | `tests/e2e/store-manager-checkout.spec.ts` (anonymous denial); `features/store-manager/counter-sale.test.tsx` |
+| `SM-ORDER-002` | `features/orders/basket.test.ts`; `search_sellable_variants` in `docs/supabase/tests/store_orders_payments.test.sql` |
+| `SM-ORDER-003`–`005` | `features/orders/basket.test.ts`; `features/store-manager/counter-sale.test.tsx` |
+| `SM-ORDER-006` | `features/store-manager/counter-sale.test.tsx` |
+| `SM-ORDER-007` | `validate_counter_basket` price/stock cases in `store_orders_payments.test.sql`; `features/orders/actions.test.ts` |
+| `SM-ORDER-008`–`009` | `create_online_counter_order` reservation/immutability cases in `store_orders_payments.test.sql` |
+| `SM-ORDER-010` | `features/payments/provider-contract.test.ts`; `features/payments/providers/dodo.test.ts` |
+| `SM-ORDER-011` | `fail_provider_checkout_creation` / `record_provider_checkout_uncertain` cases in `store_orders_payments.test.sql`; `features/payments/actions.test.ts` |
+| `SM-ORDER-012` | `features/store-manager/counter-sale.test.tsx`; `features/payments/handoff.test.ts` |
+| `SM-ORDER-013` | `tests/e2e/store-manager-checkout.spec.ts` (safe return); `features/auth/return-path.test.ts` |
+| `SM-ORDER-014`–`016` | `claim_payment_handoff` / `get_payment_redirect` cases in `store_orders_payments.test.sql`; `features/payments/payment-handoff.test.tsx` |
+| `SM-ORDER-017` | `features/payments/payment-handoff.test.tsx` (return page is status-only) |
+| `SM-ORDER-018`–`019` | `process_online_payment_event` cases in `store_orders_payments.test.sql`; `app/api/webhooks/dodo/route.test.ts` |
+| `SM-ORDER-020` | `complete_cash_counter_sale` cases in `store_orders_payments.test.sql`; `features/orders/actions.test.ts` |
+| `SM-ORDER-021` | `cancel_online_counter_order` cases in `store_orders_payments.test.sql` |
+| `SM-ORDER-022`–`024` | `features/store-manager/order-history.test.tsx`; `features/orders/bill.test.tsx` |
+| `SM-ORDER-025` | `features/payments/provider-contract.test.ts` run against fake and Dodo adapters |
+| `SM-ORDER-026` | `features/store-manager/order-module-boundary.test.ts` |

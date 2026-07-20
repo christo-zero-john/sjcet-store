@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(74);
+select plan(78);
 
 -- ---------------------------------------------------------------------------
 -- Schema surface: reservation and handoff records.
@@ -446,6 +446,54 @@ select is(
 select throws_ok(
   format($$select public.process_online_payment_event('dodo','evt-success','succeeded','sess_task8','pay_1',1250,'INR',%L,repeat('b',64),now())$$, (select order_id from t_handoff)),
   '22023', null, 'a reused event id with a new payload is rejected'
+);
+
+-- ---------------------------------------------------------------------------
+-- Checkout-creation recovery (SM-ORDER-011).
+-- ---------------------------------------------------------------------------
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
+create temp table t_recover(order_id uuid, attempt_id uuid);
+insert into t_recover
+select (created -> 'order' ->> 'id')::uuid, (created ->> 'paymentAttemptId')::uuid
+from (
+  select public.create_online_counter_order(
+    jsonb_build_array(jsonb_build_object('variantId','00000000-0000-0000-0000-0000000000e1','quantity',1,'observedPricePaise',1250)),
+    '00000000-0000-0000-0000-000000000f05', 'fp-online-5', 'dodo', repeat('5', 64), 30
+  ) as created
+) s;
+select public.fail_provider_checkout_creation(
+  (select order_id from t_recover), (select attempt_id from t_recover),
+  'BadRequestError', 'Provider rejected the checkout.'
+);
+select is(
+  (select status::text from public.payment_attempts where id = (select attempt_id from t_recover)),
+  'failed', 'a definitive rejection fails the attempt'
+);
+select is(
+  (select count(*)::int from public.stock_reservations where order_id = (select order_id from t_recover) and status = 'released'),
+  1, 'a definitive rejection releases the reservation'
+);
+
+create temp table t_uncertain(order_id uuid, attempt_id uuid);
+insert into t_uncertain
+select (created -> 'order' ->> 'id')::uuid, (created ->> 'paymentAttemptId')::uuid
+from (
+  select public.create_online_counter_order(
+    jsonb_build_array(jsonb_build_object('variantId','00000000-0000-0000-0000-0000000000e1','quantity',1,'observedPricePaise',1250)),
+    '00000000-0000-0000-0000-000000000f06', 'fp-online-6', 'dodo', repeat('6', 64), 30
+  ) as created
+) s;
+select public.record_provider_checkout_uncertain(
+  (select order_id from t_uncertain), (select attempt_id from t_uncertain),
+  'provider_timeout', 'Checkout creation timed out.'
+);
+select is(
+  (select reconciliation_code from public.payment_attempts where id = (select attempt_id from t_uncertain)),
+  'provider_timeout', 'an ambiguous result records reconciliation'
+);
+select is(
+  (select status::text from public.payment_attempts where id = (select attempt_id from t_uncertain)),
+  'pending', 'an ambiguous result keeps the attempt pending for retry'
 );
 
 select * from finish();

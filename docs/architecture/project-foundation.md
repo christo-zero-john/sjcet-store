@@ -158,8 +158,11 @@ Shared tables:
 - `profiles`: one application profile per Auth user;
 - `user_roles`: trusted role assignments;
 - `audit_events`: append-only actor/action/entity trail;
-- `payment_attempts`: provider-neutral payment lifecycle;
-- `processed_webhooks`: idempotency ledger for provider events.
+- `payment_attempts`: provider-neutral payment lifecycle, including idempotency
+  key, provider-checkout expiry, and reconciliation code/message;
+- `processed_webhooks`: idempotency ledger for provider events;
+- `private.payment_handoffs`: authenticated QR handoff, storing only the
+  SHA-256 token hash, the claiming user, expiry, claim, and revocation.
 
 Store-owned tables:
 
@@ -172,8 +175,11 @@ Store-owned tables:
 - `product_variants`;
 - `variant_attribute_values`;
 - `stock_movements`;
-- `orders`; and
-- `order_lines`.
+- `orders` (with idempotency key, request fingerprint, and bounded
+  online-payment expiry);
+- `order_lines`; and
+- `stock_reservations`: bounded online-order reservations that reduce available
+  stock without changing physical `current_stock`.
 
 Catalog category, attribute, and value names are manager-owned data. The schema
 must not hardcode names such as stationery, uniforms, size, or color. Catalog

@@ -4923,8 +4923,11 @@ begin
 
   update public.payment_attempts
   set status = 'failed',
-      failure_code = coalesce(nullif(btrim(failure_code), ''), 'checkout_create_failed'),
-      failure_message = failure_message
+      failure_code = coalesce(
+        nullif(btrim(fail_provider_checkout_creation.failure_code), ''),
+        'checkout_create_failed'
+      ),
+      failure_message = fail_provider_checkout_creation.failure_message
   where id = target_attempt_id
     and order_id = target_order_id
     and status = 'pending';
@@ -4969,8 +4972,12 @@ begin
   end if;
 
   update public.payment_attempts
-  set reconciliation_code = coalesce(nullif(btrim(reconciliation_code), ''), 'checkout_uncertain'),
-      reconciliation_message = reconciliation_message
+  set reconciliation_code = coalesce(
+        nullif(btrim(record_provider_checkout_uncertain.reconciliation_code), ''),
+        'checkout_uncertain'
+      ),
+      reconciliation_message =
+        record_provider_checkout_uncertain.reconciliation_message
   where id = target_attempt_id
     and order_id = target_order_id
     and status = 'pending';
@@ -5659,7 +5666,7 @@ begin
   insert into public.audit_events (actor_id, action, entity_type, entity_id, metadata)
   values
     (order_actor, 'payment.succeeded', 'payment_attempt', attempt.id,
-      jsonb_build_object('provider', provider_name)),
+      jsonb_build_object('provider', provider_name, 'occurred_at', occurred_at)),
     (order_actor, 'order.paid', 'order', attempt.order_id, '{}'::jsonb),
     (order_actor, 'order.fulfilled', 'order', attempt.order_id, '{}'::jsonb);
 
