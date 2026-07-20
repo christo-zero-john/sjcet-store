@@ -1,11 +1,24 @@
-import { ModulePlaceholder } from "../../../features/store-manager/module-placeholder";
+import { requireStoreOperator } from "../../../features/auth/authorization";
+import {
+  getOrderHistory,
+  normalizeOrderHistoryQuery,
+} from "../../../features/orders/queries";
+import { OrderHistory } from "../../../features/store-manager/order-history";
 
-export default function OrdersPage() {
+export const metadata = { title: "Orders" };
+
+type OrdersPageProps = Readonly<{
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}>;
+
+export default async function OrdersPage({ searchParams }: OrdersPageProps) {
+  await requireStoreOperator();
+  const query = normalizeOrderHistoryQuery(await searchParams);
+  const page = await getOrderHistory(query);
+
   return (
-    <ModulePlaceholder
-      description="Review and fulfil college-store orders."
-      eyebrow="Daily work"
-      title="Orders"
-    />
+    <main className="store-records-page">
+      <OrderHistory page={page} query={query} />
+    </main>
   );
 }

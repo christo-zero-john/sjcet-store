@@ -1627,3 +1627,61 @@ a {
     display: none;
   }
 }
+
+/* Order and payment records */
+.store-records-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+.order-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.order-history table,
+.payment-history table,
+.order-detail-lines,
+.order-bill table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.order-history th,
+.order-history td,
+.payment-history th,
+.payment-history td,
+.order-detail-lines th,
+.order-detail-lines td,
+.order-bill th,
+.order-bill td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border, #d5ddd7);
+}
+.order-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem 1rem;
+}
+.order-bill {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.order-bill-paid {
+  font-weight: 700;
+}
+@media print {
+  .store-manager-nav,
+  .manager-shell-nav,
+  .order-history-filters,
+  .order-detail-bill,
+  .order-history-next {
+    display: none;
+  }
+  .order-bill {
+    padding: 0;
+  }
+}
