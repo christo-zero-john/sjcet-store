@@ -18,4 +18,15 @@ describe("product creation action composition", () => {
     expect(source).toContain("target_variants");
     expect(source).not.toContain('rpc("create_product_with_variant"');
   });
+
+  it("accepts images only for explicit variants", () => {
+    expect(source).not.toContain('formData.get("primaryImage")');
+    expect(source).toContain("variantImage:${variant.clientKey}");
+    expect(source).toContain(
+      'const variantId = formText(formData, "variantId");',
+    );
+    expect(source).toContain(
+      'productDetailError(productId, "Choose a variant for this image.")',
+    );
+  });
 });
